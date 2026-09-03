@@ -69,6 +69,10 @@ tag in a trailing comment for a reproducible build that Dependabot can still bum
 uses: FinOps-Open-Cost-and-Usage-Spec/FOCUS_RM_Extraction@<sha>  # v1.2.0
 ```
 
+While the action is pre-1.0, releases are tagged `v0.x.y` and published as prereleases. `v0`
+moves with them but carries no stability promise: the inputs may change between 0.x releases.
+Pin an exact tag until `v1.0.0`.
+
 ## Contents
 
 The tool lives in `src/`; `action.yml` and `action.sh` at the root wrap it as a GitHub Action.

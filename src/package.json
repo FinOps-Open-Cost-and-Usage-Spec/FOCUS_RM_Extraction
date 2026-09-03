@@ -1,6 +1,6 @@
 {
   "name": "focus-requirements-model-extraction",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "private": true,
   "description": "MVP extractor that generates Requirements Model JSON from FOCUS specification markdown.",
   "type": "commonjs",

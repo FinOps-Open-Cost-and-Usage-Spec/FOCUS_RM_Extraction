@@ -21,11 +21,14 @@ jobs:
         with:
           commands: fixtures
 
+      # Pre-1.0 this moves `v0`, which by SemVer carries no stability promise: 0.x releases
+      # may break the action's inputs. It is still moved, so the mechanism is exercised by the
+      # test releases rather than first used on v1.0.0.
       - name: Move the floating major tag
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          MAJOR="${TAG%%.*}"          # v1.2.3 -> v1
+          MAJOR="${TAG%%.*}"          # v1.2.3 -> v1, v0.0.1 -> v0
           git config user.name  'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git tag -f "$MAJOR" "$GITHUB_SHA"
@@ -36,4 +39,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" --generate-notes --title "$TAG" --verify-tag
+        run: |
+          # 0.x is the pre-1.0 test line, marked so nobody mistakes it for a stable contract.
+          flags=()
+          case "$TAG" in v0.*) flags+=(--prerelease) ;; esac
+          gh release create "$TAG" --generate-notes --title "$TAG" --verify-tag \
+            ${flags[@]+"${flags[@]}"}
