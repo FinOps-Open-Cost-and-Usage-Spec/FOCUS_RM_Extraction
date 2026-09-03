@@ -34,7 +34,14 @@ die()  { printf '::error::%s\n' "$1" >&2; exit 2; }
 # caller wants to read, and the step that produced it has failed by then.
 output_abs=""
 verdict="skipped"
-finish() { emit output-path "$output_abs"; emit diff-verdict "$verdict"; }
+verify_result="skipped"
+verify_warnings=""
+finish() {
+  emit output-path "$output_abs"
+  emit diff-verdict "$verdict"
+  emit verify-result "$verify_result"
+  emit verify-warnings "$verify_warnings"
+}
 trap finish EXIT
 
 require() {
@@ -102,8 +109,19 @@ for c in "${STEPS[@]}"; do
       require specification "$SPECIFICATION" verify
       require baseline "$BASELINE" verify
       [ -n "$OUTPUT" ] || die "'verify' needs the 'output' input."
+      # The warning count is reported separately from pass/fail. Warnings are curation fields
+      # left at their defaults, which verify deliberately does not fail on, so a caller that
+      # only sees the exit code cannot tell a clean model from one with 88 unreviewed rules.
+      set +e
       node "$SRC/verify.js" \
-        --specification "$SPECIFICATION" --baseline "$BASELINE" --output "$OUTPUT"
+        --specification "$SPECIFICATION" --baseline "$BASELINE" --output "$OUTPUT" \
+        | tee "${RUNNER_TEMP:-/tmp}/rm-verify.log"
+      status=${PIPESTATUS[0]}
+      set -e
+      summary="$(grep -E '^[0-9]+ checks passed,' "${RUNNER_TEMP:-/tmp}/rm-verify.log" | tail -1)"
+      verify_warnings="$(printf '%s' "$summary" | sed -n 's/.*, \([0-9][0-9]*\) warning(s)\..*/\1/p')"
+      if [ "$status" -eq 0 ]; then verify_result="pass"; else verify_result="fail"; fi
+      [ "$status" -eq 0 ] || exit "$status"
       ;;
 
     diff)

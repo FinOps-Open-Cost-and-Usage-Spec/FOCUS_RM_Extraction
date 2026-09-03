@@ -59,6 +59,15 @@ outputs:
   diff-verdict:
     description: 'complete, content-complete, gaps, or skipped when the diff did not run.'
     value: ${{ steps.run.outputs.diff-verdict }}
+  verify-result:
+    description: 'pass, fail, or skipped when verify did not run.'
+    value: ${{ steps.run.outputs.verify-result }}
+  verify-warnings:
+    description: >
+      Count of curation fields left at their defaults. Reported separately because verify does
+      not fail on them, so the exit code alone cannot distinguish a clean model from one with
+      unreviewed rules. Empty when verify did not run.
+    value: ${{ steps.run.outputs.verify-warnings }}
 
 runs:
   using: composite

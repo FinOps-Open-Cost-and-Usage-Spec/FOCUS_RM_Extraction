@@ -51,9 +51,19 @@ at a real specification checkout.
 | `summary` | `false` | Diff prints counts and verdict only. |
 | `node-version` | `24` | Empty to reuse the caller's own Node setup. |
 
-Two outputs: `output-path`, the absolute path of the generated tree, and `diff-verdict`, one of
-`complete`, `content-complete`, `gaps` or `skipped`. `diff-verdict` is written even when
-`strict` failed the step, since `gaps` is exactly the verdict a caller wants to read.
+Four outputs:
+
+| Output | Values |
+|---|---|
+| `output-path` | absolute path of the generated tree |
+| `verify-result` | `pass`, `fail`, `skipped` |
+| `verify-warnings` | count of curation fields left at their defaults |
+| `diff-verdict` | `complete`, `content-complete`, `gaps`, `skipped` |
+
+`verify-warnings` is separate from `verify-result` because verify deliberately does not fail on
+those warnings, so an exit code alone cannot tell a clean model from one carrying unreviewed
+rules. All four are written even when a step failed, since a failing step's verdict is exactly
+what a caller wants to read.
 
 Paths in `specification`, `baseline` and `output` resolve against the workspace. The extractor's
 own assets (the contract, the check-function lookup, `node_modules`) resolve against the action
