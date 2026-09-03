@@ -49,7 +49,7 @@ at a real specification checkout.
 | `dataset-folder` | `billing_period` | Dataset targeted by the verifier's deep audit. |
 | `strict` | `false` | Fail on a diff content gap. Key order and whitespace never fail. |
 | `summary` | `false` | Diff prints counts and verdict only. |
-| `node-version` | `20` | Empty to reuse the caller's own Node setup. |
+| `node-version` | `24` | Empty to reuse the caller's own Node setup. |
 
 Two outputs: `output-path`, the absolute path of the generated tree, and `diff-verdict`, one of
 `complete`, `content-complete`, `gaps` or `skipped`. `diff-verdict` is written even when
@@ -402,7 +402,7 @@ paragraph, well-formed bullet list) before extraction is attempted.
 
 ## Releasing
 
-`.github/workflows/ci.yml` runs the unit tests and the fixture cycle on Node 20 and 22 for every
+`.github/workflows/ci.yml` runs the unit tests and the fixture cycle on Node 22 and 24 for every
 push and pull request, and a second job exercises `action.yml` itself against the fixtures via
 `uses: ./`, so a broken action never ships even when the extractor is fine.
 

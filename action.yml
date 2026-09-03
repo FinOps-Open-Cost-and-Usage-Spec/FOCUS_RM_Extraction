@@ -50,7 +50,7 @@ inputs:
   node-version:
     description: 'Node version to set up. Set to an empty string to use whatever the caller set up.'
     required: false
-    default: '20'
+    default: '24'
 
 outputs:
   output-path:
@@ -65,7 +65,7 @@ runs:
   steps:
     - name: Set up Node
       if: inputs.node-version != ''
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v7
       with:
         node-version: ${{ inputs.node-version }}
 

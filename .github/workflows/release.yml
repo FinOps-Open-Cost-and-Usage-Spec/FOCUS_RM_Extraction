@@ -12,7 +12,7 @@ jobs:
     name: Gate, publish, move the major tag
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The tag is the contract consumers pin to, so it is gated on the same fixture cycle
       # CI runs, exercised through action.yml rather than through the npm scripts.
