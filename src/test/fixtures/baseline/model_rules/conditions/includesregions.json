@@ -1,0 +1,58 @@
+{
+  "CON-IncludesRegions-N-000-M": {
+    "Function": "Composite",
+    "Reference": "IncludesRegions",
+    "EntityType": "Condition",
+    "EntityName": "Includes Regions",
+    "EntityId": "IncludesRegions",
+    "Notes": "",
+    "ModelVersionIntroduced": "1.0",
+    "Status": "Active",
+    "Conditions": [],
+    "Type": "Static",
+    "Order": 0,
+    "DatasetType": "CON",
+    "DatasetId": null,
+    "DatasetName": null,
+    "ValidationCriteria": {
+      "MustSatisfy": "IncludesRegions MUST adhere to the following requirements:",
+      "Keyword": "MUST",
+      "Requirement": {
+        "CheckFunction": "AND",
+        "Items": [
+          {
+            "CheckFunction": "CheckModelRule",
+            "ModelRuleId": "CON-IncludesRegions-N-001-M"
+          }
+        ]
+      },
+      "Condition": {},
+      "Dependencies": [
+        "CON-IncludesRegions-N-001-M"
+      ]
+    }
+  },
+  "CON-IncludesRegions-N-001-M": {
+    "Function": "Validation",
+    "Reference": "IncludesRegions",
+    "EntityType": "Condition",
+    "EntityName": "Includes Regions",
+    "EntityId": "IncludesRegions",
+    "Notes": "",
+    "ModelVersionIntroduced": "1.0",
+    "Status": "Active",
+    "Conditions": [],
+    "Type": "Dynamic",
+    "Order": 10,
+    "DatasetType": "CON",
+    "DatasetId": null,
+    "DatasetName": null,
+    "ValidationCriteria": {
+      "MustSatisfy": "IncludesRegions MUST be true if the provider offers regional resources.",
+      "Keyword": "MUST",
+      "Requirement": {},
+      "Condition": {},
+      "Dependencies": []
+    }
+  }
+}

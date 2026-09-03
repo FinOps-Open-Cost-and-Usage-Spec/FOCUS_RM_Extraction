@@ -1,0 +1,86 @@
+{
+  "ATT-StringHandling-A-000-M": {
+    "Function": "Composite",
+    "Reference": "StringHandling",
+    "EntityType": "Attribute",
+    "EntityName": "String Handling",
+    "EntityId": "StringHandling",
+    "Notes": "",
+    "ModelVersionIntroduced": "1.0",
+    "Status": "Active",
+    "Conditions": [],
+    "Type": "Static",
+    "Order": 0,
+    "DatasetType": "ATT",
+    "DatasetId": null,
+    "DatasetName": null,
+    "ValidationCriteria": {
+      "MustSatisfy": "StringHandling MUST adhere to the following requirements:",
+      "Keyword": "MUST",
+      "Requirement": {
+        "CheckFunction": "AND",
+        "Items": [
+          {
+            "CheckFunction": "CheckModelRule",
+            "ModelRuleId": "ATT-StringHandling-A-001-M"
+          },
+          {
+            "CheckFunction": "CheckModelRule",
+            "ModelRuleId": "ATT-StringHandling-A-002-M"
+          }
+        ]
+      },
+      "Condition": {},
+      "Dependencies": [
+        "ATT-StringHandling-A-001-M",
+        "ATT-StringHandling-A-002-M"
+      ]
+    }
+  },
+  "ATT-StringHandling-A-001-M": {
+    "Function": "Validation",
+    "Reference": "StringHandling",
+    "EntityType": "Attribute",
+    "EntityName": "String Handling",
+    "EntityId": "StringHandling",
+    "Notes": "",
+    "ModelVersionIntroduced": "1.0",
+    "Status": "Active",
+    "Conditions": [],
+    "Type": "Dynamic",
+    "Order": 10,
+    "DatasetType": "ATT",
+    "DatasetId": null,
+    "DatasetName": null,
+    "ValidationCriteria": {
+      "MustSatisfy": "StringHandling MUST be encoded as UTF-8.",
+      "Keyword": "MUST",
+      "Requirement": {},
+      "Condition": {},
+      "Dependencies": []
+    }
+  },
+  "ATT-StringHandling-A-002-M": {
+    "Function": "Validation",
+    "Reference": "StringHandling",
+    "EntityType": "Attribute",
+    "EntityName": "String Handling",
+    "EntityId": "StringHandling",
+    "Notes": "",
+    "ModelVersionIntroduced": "1.0",
+    "Status": "Active",
+    "Conditions": [],
+    "Type": "Dynamic",
+    "Order": 20,
+    "DatasetType": "ATT",
+    "DatasetId": null,
+    "DatasetName": null,
+    "ValidationCriteria": {
+      "MustSatisfy": "StringHandling MUST NOT be padded with leading or trailing whitespace.",
+      "Keyword": "MUST NOT",
+      "Requirement": {},
+      "Condition": {},
+      "Dependencies": []
+    }
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "CheckFunctions": {
+    "AND": {
+      "Description": "AND check items, will return true on ALL checks passing",
+      "Arguments": [
+        "Items"
+      ],
+      "FormatAttributes": []
+    },
+    "CheckModelRule": {
+      "Description": "Check another ModelRule and turn its value",
+      "Arguments": [
+        "ModelRuleId"
+      ],
+      "FormatAttributes": []
+    },
+    "CheckNotValue": {
+      "Description": "Check if column does not have a particular value",
+      "Arguments": [
+        "ColumnName",
+        "Value"
+      ],
+      "FormatAttributes": []
+    },
+    "ColumnPresent": {
+      "Description": "Check if column is present in the dataset",
+      "Arguments": [
+        "ColumnName"
+      ],
+      "FormatAttributes": [
+        "ATT-FocusColumnHandling-A-000-M"
+      ]
+    },
+    "FormatDateTime": {
+      "Description": "Check column has the format of datetime",
+      "Arguments": [
+        "ColumnName"
+      ],
+      "FormatAttributes": [
+        "ATT-DateTimeFormat-A-000-M"
+      ]
+    },
+    "FormatString": {
+      "Description": "Check a column has a string format",
+      "Arguments": [
+        "ColumnName"
+      ],
+      "FormatAttributes": [
+        "ATT-StringHandling-A-000-M"
+      ]
+    },
+    "TypeDateTime": {
+      "Description": "Check column has the data type of datetime",
+      "Arguments": [
+        "ColumnName"
+      ],
+      "FormatAttributes": []
+    },
+    "TypeString": {
+      "Description": "Check column has the data type of string",
+      "Arguments": [
+        "ColumnName"
+      ],
+      "FormatAttributes": []
+    }
+  }
+}

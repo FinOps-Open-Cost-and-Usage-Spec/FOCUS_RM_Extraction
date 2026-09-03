@@ -1,0 +1,91 @@
+name: 'FOCUS Requirements Model Extraction'
+description: 'Validate FOCUS specification markdown, then extract, verify and diff the Requirements Model.'
+author: 'FinOps Foundation'
+branding:
+  icon: 'check-square'
+  color: 'blue'
+
+inputs:
+  commands:
+    description: >
+      Comma-separated steps to run, in the order given: validate, extract, verify, diff.
+      Use "fixtures" on its own to run the bundled fixture cycle as a smoke test, which needs
+      no specification checkout.
+    required: false
+    default: 'validate,extract,verify,diff'
+  specification:
+    description: 'Folder holding datasets/, attributes/ and conditions/. Relative to the workspace.'
+    required: false
+    default: ''
+  baseline:
+    description: 'Release folder to diff against and copy assets from. Must contain model_rules/.'
+    required: false
+    default: ''
+  output:
+    description: 'Folder the generated model tree is written to.'
+    required: false
+    default: 'rm-output'
+  new-version:
+    description: >
+      Version stamped into ModelVersionIntroduced and ModelVersionRemoved for new and tombstoned
+      rules. Defaults to the baseline ModelVersion.
+    required: false
+    default: ''
+  dataset-folders:
+    description: 'Comma-separated dataset folders to limit extraction to. Default: all of them.'
+    required: false
+    default: ''
+  dataset-folder:
+    description: "Dataset targeted by the verifier's deep transformation audit."
+    required: false
+    default: 'billing_period'
+  strict:
+    description: 'Fail the job when the diff finds a content gap. Key order and whitespace never fail.'
+    required: false
+    default: 'false'
+  summary:
+    description: 'Diff prints counts and the verdict only, without per-entity detail.'
+    required: false
+    default: 'false'
+  node-version:
+    description: 'Node version to set up. Set to an empty string to use whatever the caller set up.'
+    required: false
+    default: '20'
+
+outputs:
+  output-path:
+    description: 'Absolute path of the generated model tree.'
+    value: ${{ steps.run.outputs.output-path }}
+  diff-verdict:
+    description: 'complete, content-complete, gaps, or skipped when the diff did not run.'
+    value: ${{ steps.run.outputs.diff-verdict }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node
+      if: inputs.node-version != ''
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Install extractor dependencies
+      shell: bash
+      working-directory: ${{ github.action_path }}/src
+      run: npm ci --omit=dev --no-audit --no-fund
+
+    - name: Run
+      id: run
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_COMMANDS: ${{ inputs.commands }}
+        INPUT_SPECIFICATION: ${{ inputs.specification }}
+        INPUT_BASELINE: ${{ inputs.baseline }}
+        INPUT_OUTPUT: ${{ inputs.output }}
+        INPUT_NEW_VERSION: ${{ inputs.new-version }}
+        INPUT_DATASET_FOLDERS: ${{ inputs.dataset-folders }}
+        INPUT_DATASET_FOLDER: ${{ inputs.dataset-folder }}
+        INPUT_STRICT: ${{ inputs.strict }}
+        INPUT_SUMMARY: ${{ inputs.summary }}
+      run: ${{ github.action_path }}/action.sh

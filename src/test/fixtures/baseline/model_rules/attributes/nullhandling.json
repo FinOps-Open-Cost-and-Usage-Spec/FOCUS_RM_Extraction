@@ -1,0 +1,58 @@
+{
+  "ATT-NullHandling-A-000-M": {
+    "Function": "Composite",
+    "Reference": "NullHandling",
+    "EntityType": "Attribute",
+    "EntityName": "Null Handling",
+    "EntityId": "NullHandling",
+    "Notes": "",
+    "ModelVersionIntroduced": "1.0",
+    "Status": "Active",
+    "Conditions": [],
+    "Type": "Static",
+    "Order": 0,
+    "DatasetType": "ATT",
+    "DatasetId": null,
+    "DatasetName": null,
+    "ValidationCriteria": {
+      "MustSatisfy": "NullHandling MUST adhere to the following requirements:",
+      "Keyword": "MUST",
+      "Requirement": {
+        "CheckFunction": "AND",
+        "Items": [
+          {
+            "CheckFunction": "CheckModelRule",
+            "ModelRuleId": "ATT-NullHandling-A-001-M"
+          }
+        ]
+      },
+      "Condition": {},
+      "Dependencies": [
+        "ATT-NullHandling-A-001-M"
+      ]
+    }
+  },
+  "ATT-NullHandling-A-001-M": {
+    "Function": "Validation",
+    "Reference": "NullHandling",
+    "EntityType": "Attribute",
+    "EntityName": "Null Handling",
+    "EntityId": "NullHandling",
+    "Notes": "",
+    "ModelVersionIntroduced": "1.0",
+    "Status": "Active",
+    "Conditions": [],
+    "Type": "Dynamic",
+    "Order": 10,
+    "DatasetType": "ATT",
+    "DatasetId": null,
+    "DatasetName": null,
+    "ValidationCriteria": {
+      "MustSatisfy": "NullHandling MUST treat an empty string as a value, not as null.",
+      "Keyword": "MUST",
+      "Requirement": {},
+      "Condition": {},
+      "Dependencies": []
+    }
+  }
+}

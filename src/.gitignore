@@ -1,0 +1,5 @@
+node_modules/
+.fixture-output/
+output_tmp/
+output/*
+!output/README.md

@@ -1,0 +1,86 @@
+{
+  "ATT-DateTimeFormat-A-000-M": {
+    "Function": "Composite",
+    "Reference": "DateTimeFormat",
+    "EntityType": "Attribute",
+    "EntityName": "Date/Time Format",
+    "EntityId": "DateTimeFormat",
+    "Notes": "",
+    "ModelVersionIntroduced": "1.0",
+    "Status": "Active",
+    "Conditions": [],
+    "Type": "Static",
+    "Order": 0,
+    "DatasetType": "ATT",
+    "DatasetId": null,
+    "DatasetName": null,
+    "ValidationCriteria": {
+      "MustSatisfy": "DateTimeFormat MUST adhere to the following requirements:",
+      "Keyword": "MUST",
+      "Requirement": {
+        "CheckFunction": "AND",
+        "Items": [
+          {
+            "CheckFunction": "CheckModelRule",
+            "ModelRuleId": "ATT-DateTimeFormat-A-001-M"
+          },
+          {
+            "CheckFunction": "CheckModelRule",
+            "ModelRuleId": "ATT-DateTimeFormat-A-002-M"
+          }
+        ]
+      },
+      "Condition": {},
+      "Dependencies": [
+        "ATT-DateTimeFormat-A-001-M",
+        "ATT-DateTimeFormat-A-002-M"
+      ]
+    }
+  },
+  "ATT-DateTimeFormat-A-001-M": {
+    "Function": "Validation",
+    "Reference": "DateTimeFormat",
+    "EntityType": "Attribute",
+    "EntityName": "Date/Time Format",
+    "EntityId": "DateTimeFormat",
+    "Notes": "",
+    "ModelVersionIntroduced": "1.0",
+    "Status": "Active",
+    "Conditions": [],
+    "Type": "Dynamic",
+    "Order": 10,
+    "DatasetType": "ATT",
+    "DatasetId": null,
+    "DatasetName": null,
+    "ValidationCriteria": {
+      "MustSatisfy": "DateTimeFormat MUST be expressed in the Gregorian calendar.",
+      "Keyword": "MUST",
+      "Requirement": {},
+      "Condition": {},
+      "Dependencies": []
+    }
+  },
+  "ATT-DateTimeFormat-A-002-M": {
+    "Function": "Validation",
+    "Reference": "DateTimeFormat",
+    "EntityType": "Attribute",
+    "EntityName": "Date/Time Format",
+    "EntityId": "DateTimeFormat",
+    "Notes": "",
+    "ModelVersionIntroduced": "1.0",
+    "Status": "Active",
+    "Conditions": [],
+    "Type": "Dynamic",
+    "Order": 20,
+    "DatasetType": "ATT",
+    "DatasetId": null,
+    "DatasetName": null,
+    "ValidationCriteria": {
+      "MustSatisfy": "DateTimeFormat MUST be expressed in Coordinated Universal Time.",
+      "Keyword": "MUST",
+      "Requirement": {},
+      "Condition": {},
+      "Dependencies": []
+    }
+  }
+}

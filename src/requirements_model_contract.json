@@ -1,0 +1,75 @@
+{
+  "DatasetTypes": {
+    "BillingPeriod": "BIP",
+    "CostAndUsage": "CAU",
+    "ContractCommitment": "CCT",
+    "InvoiceDetail": "IND"
+  },
+  "DataModel": {
+    "Location": "specification/datasets/data_model.md",
+    "EntityType": "DataModel",
+    "ArtifactType": "M",
+    "IdPrefix": "DMO",
+    "Headings": {
+      "Requirements": "Requirements",
+      "Id": "Data Model ID",
+      "DisplayName": "Display Name"
+    }
+  },
+  "Datasets": {
+    "Location": "specification/datasets/",
+    "EntityType": "Dataset",
+    "ArtifactType": "D",
+    "Headings": {
+      "Requirements": "Requirements",
+      "Id": "Dataset ID",
+      "DisplayName": "Display Name",
+      "Deprecated": "Deprecated (version)"
+    }
+  },
+  "Columns": {
+    "Location": "specification/datasets/<dataset_name>/",
+    "EntityType": "Column",
+    "ArtifactType": "C",
+    "Headings": {
+      "Requirements": "Requirements",
+      "Id": "Column ID",
+      "DisplayName": "Display Name",
+      "Deprecated": "Deprecated (version)"
+    }
+  },
+  "Objects": {
+    "Location": "specification/datasets/<dataset_name>/columns/",
+    "EntityType": "Object",
+    "ArtifactType": "O",
+    "HeadingDepth": 3,
+    "Headings": {
+      "Requirements": "Object Requirements",
+      "Id": "Object ID",
+      "DisplayName": "Object Display Name"
+    }
+  },
+  "Attributes": {
+    "Location": "specification/attributes/",
+    "EntityType": "Attribute",
+    "ArtifactType": "A",
+    "IdPrefix": "ATT",
+    "Headings": {
+      "Requirements": "Requirements",
+      "Id": "Attribute ID",
+      "DisplayName": "Attribute Name",
+      "Deprecated": "Deprecated (version)"
+    }
+  },
+  "Conditions": {
+    "Location": "specification/conditions/",
+    "EntityType": "Condition",
+    "ArtifactType": "N",
+    "IdPrefix": "CON",
+    "Headings": {
+      "Requirements": "Requirements",
+      "Id": "Condition ID",
+      "DisplayName": "Display Name"
+    }
+  }
+}

@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Gate, publish, move the major tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The tag is the contract consumers pin to, so it is gated on the same fixture cycle
+      # CI runs, exercised through action.yml rather than through the npm scripts.
+      - name: Verify the tagged commit
+        uses: ./
+        with:
+          commands: fixtures
+
+      - name: Move the floating major tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          MAJOR="${TAG%%.*}"          # v1.2.3 -> v1
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git tag -f "$MAJOR" "$GITHUB_SHA"
+          git push -f origin "refs/tags/$MAJOR"
+          echo "Consumers pinned to $MAJOR now resolve to $TAG." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" --generate-notes --title "$TAG" --verify-tag

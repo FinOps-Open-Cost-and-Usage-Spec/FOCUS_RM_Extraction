@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+    defaults:
+      run:
+        working-directory: src
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: src/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run validate:fixtures
+      - run: npm run extract:fixtures
+      - run: npm run verify:fixtures
+      - run: npm run diff:fixtures
+
+  action:
+    # Dogfood action.yml against the bundled fixtures, so a broken action never ships even
+    # when the extractor itself is fine.
+    name: Action smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        with:
+          commands: fixtures
