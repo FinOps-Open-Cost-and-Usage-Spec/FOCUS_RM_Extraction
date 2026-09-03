@@ -25,9 +25,10 @@ export DATASET_FOLDER="${INPUT_DATASET_FOLDER:-billing_period}"
 if [ -z "$NEW_VERSION" ]; then unset NEW_VERSION; fi
 if [ -z "$DATASET_FOLDERS" ]; then unset DATASET_FOLDERS; fi
 
-# Both files are absent outside Actions, which is how the script stays runnable locally.
+# GITHUB_OUTPUT is absent outside Actions, which is how the script stays runnable locally.
+# Nothing is written to GITHUB_STEP_SUMMARY: the outputs carry the verdicts, and how they are
+# presented is the calling workflow's decision, not this action's.
 emit() { if [ -n "${GITHUB_OUTPUT:-}" ]; then printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"; fi; }
-note() { if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then printf '%s\n' "$1" >> "$GITHUB_STEP_SUMMARY"; fi; }
 die()  { printf '::error::%s\n' "$1" >&2; exit 2; }
 
 # Written on every exit path, including a --strict failure: "gaps" is precisely the verdict a
@@ -139,7 +140,6 @@ for c in "${STEPS[@]}"; do
       elif grep -q 'Content COMPLETE' "$log"; then verdict="content-complete"
       elif grep -q 'Model has gaps' "$log";   then verdict="gaps"
       fi
-      note "**Requirements Model diff:** \`$verdict\`"
       [ "$status" -eq 0 ] || exit "$status"
       ;;
   esac
