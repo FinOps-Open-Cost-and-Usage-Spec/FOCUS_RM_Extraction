@@ -155,7 +155,7 @@ const USAGE = `Usage: node validate_markdown.js [options]
 
 Options:
   --specification <folder>  Specification markdown to validate: the folder holding
-                            datasets/, attributes/ and conditions/. May be relative to
+                            datasets/, attributes/ and operating_model_conditions/. May be relative to
                             the working directory.
                             Default: ${DEFAULT_SPEC_ROOT}.
   -h, --help                Show this message.`;

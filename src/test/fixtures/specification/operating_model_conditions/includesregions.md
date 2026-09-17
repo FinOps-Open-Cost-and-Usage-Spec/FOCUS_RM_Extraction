@@ -6,7 +6,7 @@ IncludesRegions MUST adhere to the following requirements:
 
 * IncludesRegions MUST be true if the provider offers regional resources.
 
-## Condition ID
+## Operating Model Condition ID
 
 IncludesRegions
 

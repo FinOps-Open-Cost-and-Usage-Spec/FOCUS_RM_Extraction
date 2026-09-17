@@ -20,7 +20,11 @@ spec:
 | `datasets/billing_period/dataset.md` | dataset presence rules, and the synthesized columns composite |
 | `columns/*.md` | check-function classification (`Type`, `Nullability`) and `MUST conform to <Attribute>` links |
 | `attributes/*.md` | attribute entities that columns depend on |
-| `conditions/*.md` | condition entities and the anchor-to-ConditionId map |
+| `operating_model_conditions/*.md` | condition entities and the anchor-to-ConditionId map |
+
+The condition folder and its `Operating Model Condition ID` heading use the spelling the spec
+adopted in 2026; the legacy `conditions/` and `Condition ID` spellings the contract still accepts
+are covered by unit tests rather than by a second fixture tree.
 
 The dataset ID is `BillingPeriod` because `requirements_model_contract.json` maps it to the
 `BIP` rule-ID prefix, which the verifier asserts on every dataset-scoped rule. Sentences avoid

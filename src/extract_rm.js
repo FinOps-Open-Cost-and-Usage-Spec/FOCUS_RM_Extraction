@@ -11,8 +11,8 @@
  * rule per leaf bullet).
  *
  * Entity scope: DataModel (data_model.md), Attributes (attributes/*.md), Conditions
- * (conditions/*.md), Datasets (<dataset>/dataset.md), Columns (<dataset>/columns/*.md),
- * and the Objects nested inside a JSON-object column's markdown. Each entity is written
+ * (operating_model_conditions/*.md), Datasets (<dataset>/dataset.md), Columns
+ * (<dataset>/columns/*.md), and the Objects nested inside a JSON-object column's markdown. Each entity is written
  * to its own file, mirroring the releases/<v>/model_rules/ tree, under ./output/model_rules/.
  *
  * Rule IDs are <DatasetType>-<ArtifactName>-<ArtifactType>-<NumericId>-<Status>
@@ -33,7 +33,7 @@
  * recorded as a warning so the lookup can be extended unless it reused an Active previous
  * rule that was itself curated as Dynamic, in which case it is accepted as-is.
  * A populated Requirement is Static, an empty one Dynamic.
- * Conditions are resolved from `#conditions.<anchor>`
+ * Conditions are resolved from `#operatingmodelconditions.<anchor>`
  * links to their Condition IDs.
  */
 
@@ -271,12 +271,29 @@ function modelRuleRefs(value) {
 // Markdown parsing
 // ---------------------------------------------------------------------------
 
-/** Body tokens of the H2 section introduced by `headingText`. */
-function getSectionTokens(tokens, headingText, depth = 2) {
+/**
+ * A contract heading, as the list of spellings that satisfy it.
+ *
+ * A heading may be written as a list of alternates, newest spelling first, so one extractor
+ * reads an entity across a rename ("Condition ID" -> "Operating Model Condition ID") and still
+ * resolves an older branch or release tag. A bare string is the single-spelling case.
+ */
+function headingSpellings(heading) {
+  return Array.isArray(heading) ? heading : [heading];
+}
+
+/** How a heading reads in an error message: every spelling that would have satisfied it. */
+function headingLabel(heading) {
+  return headingSpellings(heading).join('" or "');
+}
+
+/** Body tokens of the H2 section introduced by `heading` (a spelling, or a list of them). */
+function getSectionTokens(tokens, heading, depth = 2) {
+  const spellings = headingSpellings(heading);
   const start = tokens.findIndex(
-    (t) => t.type === 'heading' && t.depth === depth && normalizeHeading(t.text) === headingText
+    (t) => t.type === 'heading' && t.depth === depth && spellings.includes(normalizeHeading(t.text))
   );
-  if (start === -1) throw new Error(`Heading not found: "${headingText}" (depth ${depth})`);
+  if (start === -1) throw new Error(`Heading not found: "${headingLabel(heading)}" (depth ${depth})`);
   const body = [];
   for (let i = start + 1; i < tokens.length; i++) {
     if (tokens[i].type === 'heading' && tokens[i].depth <= depth) break;
@@ -286,23 +303,34 @@ function getSectionTokens(tokens, headingText, depth = 2) {
 }
 
 /** Whether an H2 section with the given heading text exists (used to skip overview files). */
-function hasSection(tokens, headingText, depth = 2) {
-  return tokens.some((t) => t.type === 'heading' && t.depth === depth && normalizeHeading(t.text) === headingText);
+function hasSection(tokens, heading, depth = 2) {
+  const spellings = headingSpellings(heading);
+  return tokens.some((t) => t.type === 'heading' && t.depth === depth && spellings.includes(normalizeHeading(t.text)));
 }
 
 /** Plain text of the first paragraph token in a section (a simple-value or anchor line). */
-function getSectionText(tokens, headingText, depth = 2) {
-  const paragraph = getSectionTokens(tokens, headingText, depth).find((t) => t.type === 'paragraph');
-  if (!paragraph) throw new Error(`No paragraph found in section "${headingText}"`);
+function getSectionText(tokens, heading, depth = 2) {
+  const paragraph = getSectionTokens(tokens, heading, depth).find((t) => t.type === 'paragraph');
+  if (!paragraph) throw new Error(`No paragraph found in section "${headingLabel(heading)}"`);
   return renderInline(paragraph.tokens);
 }
 
-/** Collect condition anchors from inline tokens (links whose href is "#conditions.<anchor>"). */
+/** Match a condition link href, e.g. "#operatingmodelconditions.includesregions". */
+function conditionAnchorRe(prefixes) {
+  return new RegExp(`^#(?:${prefixes.join('|')})\\.(.+)$`);
+}
+
+// The anchor prefixes condition links are written with. Both spellings are accepted so a rename
+// of the folder does not silently drop every condition from the rules that are gated on one;
+// main() replaces this with the contract's AnchorPrefixes.
+let CONDITION_ANCHOR_RE = conditionAnchorRe(['operatingmodelconditions', 'conditions']);
+
+/** Collect condition anchors from inline tokens (links whose href is a condition anchor). */
 function conditionAnchorsOf(tokens) {
   const out = [];
   for (const t of tokens || []) {
     if (t.type === 'link' && t.href) {
-      const m = t.href.match(/^#conditions\.(.+)$/);
+      const m = t.href.match(CONDITION_ANCHOR_RE);
       if (m) out.push(m[1]);
     }
     if (t.tokens) out.push(...conditionAnchorsOf(t.tokens));
@@ -529,11 +557,11 @@ function makeRule(node, order, childKeys, ctx, modelVersionIntroduced, status, p
   // A populated Requirement (a check-function template) is Static; an empty one is Dynamic.
   const type = Object.keys(c.Requirement).length > 0 ? 'Static' : 'Dynamic';
 
-  // Conditions come from `#conditions.<anchor>` links in the sentence. A matched baseline rule can
-  // carry conditions its sentence does not link, so the baseline list is adopted when the sentence
-  // yields none; a derived list always wins, matching how a curated Requirement is handled. The
+  // Conditions come from `#operatingmodelconditions.<anchor>` links in the sentence. A matched
+  // baseline rule can carry conditions its sentence does not link, so the baseline list is
+  // adopted when the sentence yields none; a derived list always wins, matching how a curated Requirement is handled. The
   // legacy ApplicabilityCriteria key is read too, so an older BASELINE_DIR still resolves.
-  // A Condition entity is the thing being evaluated, so a `#conditions.` link in its own
+  // A Condition entity is the thing being evaluated, so a condition link in its own
   // sentence is an operand, not a gate: "IncludesListUnitPrices MUST evaluate to true when
   // IncludesUnitPricing is true" would otherwise record IncludesUnitPricing as gating the rule,
   // making it inapplicable in the very case its sibling rule says evaluates to false.
@@ -767,6 +795,37 @@ function collectDisplayNames(contract) {
     }
   }
   return names;
+}
+
+/**
+ * The markdown files of an entity folder, with the folder that was resolved.
+ *
+ * A missing folder is a hard failure rather than an empty list: the extractor would otherwise
+ * generate nothing for that entity kind, and every baseline rule it owns would read as removed.
+ * The message names every spelling the contract allows, so a folder renamed in the spec is
+ * obvious from the log.
+ */
+function entityFiles(section, label) {
+  const dir = specPath(SPEC_ROOT, section.Location);
+  if (!fs.existsSync(dir)) {
+    const tried = (Array.isArray(section.Location) ? section.Location : [section.Location]).join(', ');
+    throw new UsageError(`${label} folder not found: ${dir}\nThe contract expects one of: ${tried}`);
+  }
+  return { dir, files: fs.readdirSync(dir).filter((f) => f.endsWith('.md')) };
+}
+
+/**
+ * Fail when a folder full of markdown yielded no entity at all.
+ *
+ * Files without the entity sections are skipped by design (overview pages), so a renamed Id
+ * heading would otherwise look exactly like a folder of overviews: extraction would succeed and
+ * quietly tombstone the whole entity kind.
+ */
+function requireEntities(count, label, dir, idHeading) {
+  if (count) return;
+  throw new UsageError(
+    `No ${label} entities found in ${dir}\n` +
+    `No file there has an H2 "${headingLabel(idHeading)}" section together with a Requirements section.`);
 }
 
 /**
@@ -1376,7 +1435,7 @@ const USAGE = `Usage: node extract_rm.js [options]
 
 Options:
   --specification <folder>  Specification markdown to extract from: the folder holding
-                            datasets/, attributes/ and conditions/.
+                            datasets/, attributes/ and operating_model_conditions/.
                             Default: ${DEFAULT_SPEC_ROOT}.
   --baseline <folder>       Baseline release folder to diff against and copy the release
                             assets from. Default: releases/${BASELINE_DIR}.
@@ -1424,6 +1483,7 @@ function main() {
   if (!process.env.NEW_VERSION) NEW_VERSION = PREVIOUS_VERSION;
 
   CHECK_LOOKUP = loadCheckLookup();
+  if (contract.Conditions.AnchorPrefixes) CONDITION_ANCHOR_RE = conditionAnchorRe(contract.Conditions.AnchorPrefixes);
   CONDITIONS = loadConditions(specPath(SPEC_ROOT, contract.Conditions.Location), contract.Conditions.Headings);
   CONDITION_IDS = new Set(Object.values(CONDITIONS));
   DISPLAY_NAMES = collectDisplayNames(contract);
@@ -1447,8 +1507,9 @@ function main() {
   // --- Attributes (first: dataset/column "conform to X" rules depend on their root IDs) ---
   const attrRoots = {}; // attribute EntityId -> its root rule ID (e.g. NullHandling -> ATT-NullHandling-A-000-C)
   const att = contract.Attributes;
-  const attrDir = specPath(SPEC_ROOT, att.Location);
-  for (const file of fs.readdirSync(attrDir).filter((f) => f.endsWith('.md'))) {
+  const { dir: attrDir, files: attrFiles } = entityFiles(att, 'Attributes');
+  let attrCount = 0;
+  for (const file of attrFiles) {
     const attrMdPath = path.join(attrDir, file);
     const attrTokens = marked.lexer(fs.readFileSync(attrMdPath, 'utf8'));
     // Skip non-entity files (e.g. attributes_overview.md) that lack the entity sections.
@@ -1460,18 +1521,24 @@ function main() {
     const attrRules = emit(attrMdPath, attrCtx, att.Headings, loadBaselineFile('attributes', outName), attrOut);
     attrRoots[attrId] = rootRuleId(attrRules);
     summary.push([`Attribute ${attrId}`, Object.keys(attrRules).length]);
+    attrCount++;
   }
+  requireEntities(attrCount, 'attribute', attrDir, att.Headings.Id);
 
   // --- Conditions ---
   // The same markdown loadConditions() reads for the anchor -> ConditionId map, expanded into
   // rules. Conditions belong to no dataset, so they carry DatasetType "CON" with a null
   // DatasetId/DatasetName, the same shape attributes use for ATT.
+  // The spec folder was renamed to operating_model_conditions/, but the output stays
+  // model_rules/conditions/: that path is the published model's, and moving it would read as
+  // every condition entity having been deleted and re-added.
   const cond = contract.Conditions;
-  const condDir = specPath(SPEC_ROOT, cond.Location);
-  for (const file of fs.readdirSync(condDir).filter((f) => f.endsWith('.md'))) {
+  const { dir: condDir, files: condFiles } = entityFiles(cond, 'Conditions');
+  let condCount = 0;
+  for (const file of condFiles) {
     const condMdPath = path.join(condDir, file);
     const condTokens = marked.lexer(fs.readFileSync(condMdPath, 'utf8'));
-    // Skip non-entity files (e.g. conditions_overview.md) that lack the entity sections.
+    // Skip non-entity files (e.g. an overview page) that lack the entity sections.
     if (!hasSection(condTokens, cond.Headings.Id) || !hasSection(condTokens, cond.Headings.Requirements)) continue;
     const condId = getSectionText(condTokens, cond.Headings.Id);
     const condCtx = { entityType: cond.EntityType, artifactType: cond.ArtifactType, idPrefix: cond.IdPrefix, artifactName: condId, displayName: getSectionText(condTokens, cond.Headings.DisplayName) };
@@ -1479,7 +1546,9 @@ function main() {
     const condOut = path.join(OUTPUT_ROOT, 'conditions', outName);
     const condRules = emit(condMdPath, condCtx, cond.Headings, loadBaselineFile('conditions', outName), condOut);
     summary.push([`Condition ${condId}`, Object.keys(condRules).length]);
+    condCount++;
   }
+  requireEntities(condCount, 'condition', condDir, cond.Headings.Id);
 
   // --- Datasets + their Columns ---
   const datasetFolders = resolveDatasetFolders(specPath(SPEC_ROOT, contract.Datasets.Location));
@@ -1632,4 +1701,4 @@ function main() {
 
 if (require.main === module) runMain(main, USAGE);
 
-module.exports = { isDeprecatedEntity, deprecateColumnRules, statusLetterFor, columnsCompositeId, pascalToDisplay, deepMerge, normalizeLookup };
+module.exports = { isDeprecatedEntity, deprecateColumnRules, statusLetterFor, columnsCompositeId, pascalToDisplay, deepMerge, normalizeLookup, hasSection, getSectionText, conditionAnchorsOf };

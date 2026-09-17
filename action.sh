@@ -50,10 +50,12 @@ require() {
   [ -d "$2" ] || die "$1 folder not found: $2 (resolved against $PWD)"
 }
 
-# Split the comma-separated list, trimming whitespace, preserving the caller's order.
+# Split the comma-separated list, trimming whitespace, preserving the caller's order. The
+# expansion is guarded because bash 3.2, which is what macOS ships, treats an empty array under
+# `set -u` as unbound: an empty input would abort here rather than reaching the message below.
 IFS=',' read -ra RAW <<< "$COMMANDS"
 STEPS=()
-for c in "${RAW[@]}"; do
+for c in ${RAW[@]+"${RAW[@]}"}; do
   c="$(printf '%s' "$c" | tr -d '[:space:]')"
   if [ -n "$c" ]; then STEPS+=("$c"); fi
 done

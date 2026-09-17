@@ -14,7 +14,7 @@ inputs:
     required: false
     default: 'validate,extract,verify,diff'
   specification:
-    description: 'Folder holding datasets/, attributes/ and conditions/. Relative to the workspace.'
+    description: 'Folder holding datasets/, attributes/ and operating_model_conditions/. Relative to the workspace.'
     required: false
     default: ''
   baseline:
