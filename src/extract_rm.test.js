@@ -2,8 +2,12 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
+const { execFileSync } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { marked } = require('marked');
-const { isDeprecatedEntity, deprecateColumnRules, deepMerge, normalizeLookup } = require('./extract_rm');
+const { isDeprecatedEntity, deprecateColumnRules, deepMerge, normalizeLookup, hasSection, getSectionText, conditionAnchorsOf } = require('./extract_rm');
 
 const HEADINGS = { Requirements: 'Requirements', Id: 'Column ID', DisplayName: 'Display Name', Deprecated: 'Deprecated (version)' };
 
@@ -119,4 +123,105 @@ test('an already rule-shaped entry is left untouched', () => {
     },
   };
   assert.deepEqual(normalizeLookup(current), current);
+});
+
+// The spec renamed the condition entity's ID heading to "Operating Model Condition ID" and its
+// link anchors to #operatingmodelconditions. Both spellings stay readable: the extractor is
+// pinned by tag from the spec repo, so one release has to handle a branch on either side of the
+// rename. A heading that resolves neither way is not an error but a skipped file, which is why
+// the old spelling cannot simply be dropped.
+const CONDITION_ID_HEADING = ['Operating Model Condition ID', 'Condition ID'];
+
+const CONDITION_MD = (heading) => `# Includes Regions
+
+## Requirements
+
+IncludesRegions MUST adhere to the following requirements:
+
+* IncludesRegions MUST be true if the provider offers regional resources.
+
+## ${heading}
+
+IncludesRegions
+
+## Display Name
+
+Includes Regions
+`;
+
+for (const heading of CONDITION_ID_HEADING) {
+  test(`a "${heading}" section satisfies the condition ID heading`, () => {
+    const tokens = marked.lexer(CONDITION_MD(heading));
+    assert.equal(hasSection(tokens, CONDITION_ID_HEADING), true);
+    assert.equal(getSectionText(tokens, CONDITION_ID_HEADING), 'IncludesRegions');
+  });
+}
+
+test('a file with neither spelling is skipped, not read as an entity', () => {
+  const tokens = marked.lexer(CONDITION_MD('Something Else Entirely'));
+  assert.equal(hasSection(tokens, CONDITION_ID_HEADING), false);
+});
+
+test('the heading error names every spelling that would have satisfied it', () => {
+  const tokens = marked.lexer(CONDITION_MD('Something Else Entirely'));
+  assert.throws(() => getSectionText(tokens, CONDITION_ID_HEADING),
+    /Operating Model Condition ID" or "Condition ID/);
+});
+
+test('condition links are collected under either anchor prefix', () => {
+  const md = '* Column MUST be null unless [Includes Regions](#operatingmodelconditions.includesregions) ' +
+    'and [Includes Sub Accounts](#conditions.includessubaccounts) hold.';
+  const paragraph = marked.lexer(md)[0].items[0].tokens[0];
+  assert.deepEqual(conditionAnchorsOf(paragraph.tokens), ['includesregions', 'includessubaccounts']);
+});
+
+test('links to other entity kinds are not read as conditions', () => {
+  const md = '* Column MUST conform to [Null Handling](#attributes.nullhandling) and ' +
+    '[Billing Currency](#datasets.costandusage.billingcurrency).';
+  const paragraph = marked.lexer(md)[0].items[0].tokens[0];
+  assert.deepEqual(conditionAnchorsOf(paragraph.tokens), []);
+});
+
+// A renamed folder or a renamed ID heading both used to end extraction quietly: the folder with
+// a scandir stack trace, the heading with a run that skipped every condition file and tombstoned
+// the entity kind. Both now stop with a message naming what was looked for.
+
+/** Extract over a throwaway copy of the fixture spec, after `mutate` has rearranged it. */
+function extractionFailure(mutate) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rm-extract-'));
+  try {
+    const spec = path.join(tmp, 'specification');
+    fs.cpSync(path.join(__dirname, 'test', 'fixtures', 'specification'), spec, { recursive: true });
+    mutate(spec);
+    try {
+      execFileSync(process.execPath, [path.join(__dirname, 'extract_rm.js'),
+        '--specification', spec,
+        '--baseline', path.join(__dirname, 'test', 'fixtures', 'baseline'),
+        '--output', path.join(tmp, 'output')], { encoding: 'utf8', stdio: 'pipe' });
+      return null;
+    } catch (err) {
+      return { status: err.status, stderr: err.stderr };
+    }
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+test('a conditions folder under no known name fails, naming both spellings', () => {
+  const failure = extractionFailure((spec) =>
+    fs.renameSync(path.join(spec, 'operating_model_conditions'), path.join(spec, 'renamed_away')));
+  assert.equal(failure.status, 2);
+  assert.match(failure.stderr, /Conditions folder not found/);
+  assert.match(failure.stderr, /specification\/operating_model_conditions\/, specification\/conditions\//);
+});
+
+test('a conditions folder whose files all fail to parse as entities fails', () => {
+  const failure = extractionFailure((spec) => {
+    const file = path.join(spec, 'operating_model_conditions', 'includesregions.md');
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8')
+      .replace('## Operating Model Condition ID', '## Renamed Again ID'));
+  });
+  assert.equal(failure.status, 2);
+  assert.match(failure.stderr, /No condition entities found/);
+  assert.match(failure.stderr, /Operating Model Condition ID" or "Condition ID/);
 });

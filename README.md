@@ -41,7 +41,7 @@ at a real specification checkout.
 | Input | Default | Meaning |
 |---|---|---|
 | `commands` | `validate,extract,verify,diff` | Steps to run, in order. Or `fixtures` alone. |
-| `specification` | | Folder holding `datasets/`, `attributes/`, `conditions/`. |
+| `specification` | | Folder holding `datasets/`, `attributes/`, `operating_model_conditions/`. |
 | `baseline` | | Release folder to diff against. Must contain `model_rules/`. |
 | `output` | `rm-output` | Where the generated tree is written. |
 | `new-version` | baseline `ModelVersion` | Stamped into `ModelVersionIntroduced` / `ModelVersionRemoved`. |
@@ -168,7 +168,7 @@ Three folders drive every run, and all three are options:
 
 | Option | What it names | Default |
 |---|---|---|
-| `--specification <folder>` | the markdown to read: the folder holding `datasets/`, `attributes/`, `conditions/` | `../../../specification` |
+| `--specification <folder>` | the markdown to read: the folder holding `datasets/`, `attributes/`, `operating_model_conditions/` | `../../../specification` |
 | `--baseline <folder>` | the release to diff against and copy assets from | `../releases/latest` |
 | `--output <folder>` | where the generated model is written | `./output` |
 
@@ -226,13 +226,17 @@ heading names are never hard-coded.
   (DataModel, Dataset, Column, Attribute, Condition), the spec location, the
   entity type name, the Rule-ID artifact type letter, an optional ID prefix, and
   the heading names that hold the entity ID, display name, and requirements.
+  A location or a heading may be written as a list of alternates, newest spelling
+  first, so one release of the extractor reads the spec on either side of a rename
+  (see [Renames in the specification](#renames-in-the-specification)).
 * Load `check_function_lookup.json` from this folder, then merge the baseline's own
   copy over it if it has one. This maps a normalized requirement sentence (with the
   entity name replaced by `{entity}`) to a `{ function, requirement }` pair. Both files
   are optional; absent, the lookup is empty and every leaf falls through to the
   attribute-conformance or unclassified paths.
-* Scan `specification/conditions/` to build an anchor-to-ConditionId map, so
-  that `#conditions.<anchor>` links in the markdown resolve to real Condition IDs.
+* Scan `specification/operating_model_conditions/` to build an anchor-to-ConditionId
+  map, so that `#operatingmodelconditions.<anchor>` links in the markdown resolve to
+  real Condition IDs.
 
 ### 2. Walk the entities
 
@@ -260,8 +264,8 @@ For one entity file (`emit` -> `parseRequirementTree`):
 * Each bullet's inline tokens are rendered to plain text via
   `markdown_util.renderInline`, which keeps link and emphasis display text and
   decodes HTML entities so the stored text matches the source exactly. Nested
-  bullets become child nodes. `#conditions.<anchor>` links on a bullet are
-  recorded as that rule's condition anchors.
+  bullets become child nodes. `#operatingmodelconditions.<anchor>` links on a bullet
+  are recorded as that rule's condition anchors.
 
 ### 4. Classify each node into a rule
 
@@ -400,6 +404,34 @@ failure:
 `validate_markdown.js` is a lighter pre-flight check that the spec markdown is
 shaped the way the extractor requires (present Requirements section, anchor
 paragraph, well-formed bullet list) before extraction is attempted.
+
+## Renames in the specification
+
+The extractor is pinned by tag from the spec repo, so a single release has to read branches on
+either side of a rename in the specification. Three things can move: a folder, an entity's ID
+heading, and the anchor prefix its links are written with. All three are contract data, and each
+accepts a list of alternates with the newest spelling first:
+
+```jsonc
+"Conditions": {
+  "Location": ["specification/operating_model_conditions/", "specification/conditions/"],
+  "AnchorPrefixes": ["operatingmodelconditions", "conditions"],
+  "Headings": { "Id": ["Operating Model Condition ID", "Condition ID"], ... }
+}
+```
+
+The first location that exists on disk wins; a heading is satisfied by any of its spellings; a
+link is a condition link under any of the prefixes. Adding a spelling is the whole change, and
+the old one stays until no supported branch writes it any more.
+
+Two guards make a rename that the contract has *not* been taught about loud rather than quiet:
+a missing entity folder fails with the spellings it looked for, and a folder that yields no
+entity at all (every file skipped for want of an ID heading) fails the same way. Without them a
+renamed heading extracts "successfully" while tombstoning every rule of that entity kind.
+
+Output paths never follow a spec rename. Conditions are still written to
+`model_rules/conditions/`, because that path is the published model's, and moving it would read
+as every condition entity having been deleted and re-added.
 
 ## Environment variables
 

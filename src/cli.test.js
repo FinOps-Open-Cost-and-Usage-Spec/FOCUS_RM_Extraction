@@ -51,3 +51,20 @@ test('a contract Location resolves against the specification root', () => {
   assert.equal(specPath('/spec', 'specification/datasets/data_model.md'),
     path.join('/spec', 'datasets', 'data_model.md'));
 });
+
+test('a Location written as alternates resolves to the spelling that exists', () => {
+  // The conditions folder was renamed to operating_model_conditions/ in the spec; one extractor
+  // reads both, so an older branch or release tag still extracts.
+  const root = path.join(__dirname, 'test', 'fixtures', 'specification');
+  assert.equal(
+    specPath(root, ['specification/operating_model_conditions/', 'specification/conditions/']),
+    path.join(root, 'operating_model_conditions') + path.sep);
+  assert.equal(
+    specPath(root, ['specification/conditions/', 'specification/operating_model_conditions/']),
+    path.join(root, 'operating_model_conditions') + path.sep);
+});
+
+test('alternates with nothing on disk fall back to the first, so the error names it', () => {
+  assert.equal(specPath('/spec', ['specification/operating_model_conditions/', 'specification/conditions/']),
+    path.join('/spec', 'operating_model_conditions') + path.sep);
+});

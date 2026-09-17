@@ -12,6 +12,7 @@
  * from the same markdown extract_rm.js consumed.
  */
 
+const fs = require('fs');
 const path = require('path');
 
 /**
@@ -64,9 +65,16 @@ function parseArgs(argv, flags, booleans = []) {
  * ("specification/datasets/"), while --specification names the specification folder itself, so
  * the leading segment is dropped. Keeping the contract repo-relative means it still reads as a
  * map of where entities live in the published repo.
+ *
+ * A Location may also be a list of alternates, newest spelling first, so one extractor reads a
+ * folder across a rename (conditions/ -> operating_model_conditions/) and still resolves an
+ * older branch or release tag. The first alternate that exists wins; when none does, the first
+ * is returned so the caller's "not found" message names the expected spelling.
  */
 function specPath(specRoot, location) {
-  return path.join(specRoot, location.replace(/^specification[\\/]/, ''));
+  const candidates = (Array.isArray(location) ? location : [location])
+    .map((l) => path.join(specRoot, l.replace(/^specification[\\/]/, '')));
+  return candidates.find((p) => fs.existsSync(p)) || candidates[0];
 }
 
 /** Run an entry point, printing UsageError as a usage message; real failures keep their stack. */

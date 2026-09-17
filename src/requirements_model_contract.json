@@ -62,13 +62,14 @@
     }
   },
   "Conditions": {
-    "Location": "specification/conditions/",
+    "Location": ["specification/operating_model_conditions/", "specification/conditions/"],
     "EntityType": "Condition",
     "ArtifactType": "N",
     "IdPrefix": "CON",
+    "AnchorPrefixes": ["operatingmodelconditions", "conditions"],
     "Headings": {
       "Requirements": "Requirements",
-      "Id": "Condition ID",
+      "Id": ["Operating Model Condition ID", "Condition ID"],
       "DisplayName": "Display Name"
     }
   }
