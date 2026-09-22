@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { marked } = require('marked');
-const { isDeprecatedEntity, deprecateColumnRules, deepMerge, normalizeLookup, hasSection, getSectionText, conditionAnchorsOf } = require('./extract_rm');
+const { isDeprecatedEntity, deprecateColumnRules, deepMerge, normalizeLookup, hasSection, getSectionText, conditionAnchorsOf, functionForSentence } = require('./extract_rm');
 
 const HEADINGS = { Requirements: 'Requirements', Id: 'Column ID', DisplayName: 'Display Name', Deprecated: 'Deprecated (version)' };
 
@@ -180,6 +180,35 @@ test('links to other entity kinds are not read as conditions', () => {
     '[Billing Currency](#datasets.costandusage.billingcurrency).';
   const paragraph = marked.lexer(md)[0].items[0].tokens[0];
   assert.deepEqual(conditionAnchorsOf(paragraph.tokens), []);
+});
+
+// An unmapped sentence used to land on Function 'Validation' whatever it said, so rewording a
+// format or nullability requirement into a sentence the lookup does not hold renamed its Function
+// and broke the specification's own conventions (its model suite asserts both).
+
+test('a sentence about a value\'s shape is named Format', () => {
+  assert.equal(
+    functionForSentence('ContractCommitmentDurationType SHOULD use the "[Numeric Value] [Unit]" format (e.g., "1 Day").'),
+    'Format'
+  );
+});
+
+test('a sentence about whether a value may be null is named Nullability', () => {
+  assert.equal(functionForSentence('PrincipalId MUST be null when a charge is not associated with a principal.'), 'Nullability');
+  assert.equal(functionForSentence('AllocatedServiceName MUST NOT be null when AllocatedResourceId is not null.'), 'Nullability');
+});
+
+test('a sentence about neither is named Validation', () => {
+  assert.equal(functionForSentence('PrincipalId MUST be a unique identifier within the service provider.'), 'Validation');
+});
+
+test('"formatted" does not read as a format sentence', () => {
+  assert.equal(functionForSentence('CostAndUsage MUST have its split cost allocation method documented.'), 'Validation');
+  assert.equal(functionForSentence('Tags MUST use formatting agreed with the practitioner.'), 'Validation');
+});
+
+test('nullability wins over format, which a null sentence can mention in passing', () => {
+  assert.equal(functionForSentence('ListUnitPrice MUST NOT be null when the unit uses Unit Format.'), 'Nullability');
 });
 
 // A renamed folder or a renamed ID heading both used to end extraction quietly: the folder with

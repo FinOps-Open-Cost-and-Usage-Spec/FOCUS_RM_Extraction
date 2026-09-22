@@ -285,6 +285,14 @@ For one entity file (`emit` -> `parseRequirementTree`):
 5. **Unclassified** — any remaining leaf is emitted with an empty `Requirement`
    and recorded as a warning so the lookup can be extended.
 
+Paths 4 and 5 derive no requirement, so the rule's `Function` is read off the
+sentence (`functionForSentence`): one saying something "be null" is `Nullability`,
+one mentioning a `format` is `Format`, and anything else is `Validation`. Both
+namings are conventions the published model keeps and the specification's own
+model suite asserts, so a requirement reworded out of the lookup keeps the
+`Function` its sentence is about rather than falling to a blanket `Validation`.
+A sentence answering to both is read as `Nullability`.
+
 A rule with a populated `Requirement` is typed `Static`; an empty one is `Dynamic`.
 The BCP-14 keyword (`MUST`, `SHOULD NOT`, `MAY`, ...) is extracted from the
 sentence, and the status letter (M / O / C) is derived from the keyword and

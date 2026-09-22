@@ -88,6 +88,13 @@ const BCP14_KEYWORD = /\b(MUST NOT|MUST|SHALL NOT|SHALL|SHOULD NOT|SHOULD|MAY)\b
 // unclassified path. Link text renders to the bare id, so "[Tags](#...)" matches.
 const INCLUDE_RE = /\b(?:MUST|SHOULD|MAY) include ([A-Z]\w*)\b/;
 const CONFORM_RE = /MUST conform to (\w+) requirements/;
+// A leaf rule's Function names what its sentence is about, and two of those namings are readable
+// straight off the sentence: one about whether a value may be null is Nullability, and one about
+// the shape a value takes is Format. Both conventions hold for every rule in the published model,
+// and the specification's own model suite asserts them, so a leaf the check-function lookup did
+// not map is named this way rather than falling to a blanket 'Validation'.
+const NULLABILITY_RE = /be null/i;
+const FORMAT_RE = /\bformat\b/i;
 // Entity types whose "MUST include <X>" sentences assert that a contained artifact is present.
 const PRESENCE_ENTITY_TYPES = new Set(['Dataset', 'DataModel']);
 const CONDITIONAL_RE = /\bwhen\b/;
@@ -422,6 +429,19 @@ function isPlainObject(v) {
 }
 
 /**
+ * The Function for a sentence no check-function mapping covers.
+ *
+ * Nullability is tested first: a sentence saying something "be null" states nullability directly,
+ * while "format" can appear inside such a sentence. A sentence answering to both conventions
+ * cannot satisfy them at once, so one of them has to be the reading.
+ */
+function functionForSentence(text) {
+  if (NULLABILITY_RE.test(text)) return 'Nullability';
+  if (FORMAT_RE.test(text)) return 'Format';
+  return 'Validation';
+}
+
+/**
  * Classify a requirement node into Function / Reference / Requirement / Dependencies.
  * Type is derived later from whether Requirement is populated. Leaf order matters:
  * composite -> include -> check-function lookup -> attribute conformance -> unclassified.
@@ -466,10 +486,10 @@ function classify(node, childKeys, ctx) {
   // Attribute conformance: a dependency only when X is a real (generated) attribute.
   const conform = node.text.match(CONFORM_RE);
   if (conform && ctx.attrRoots && ctx.attrRoots[conform[1]]) {
-    return { Function: 'Validation', Reference: ctx.artifactName, Requirement: {}, Dependencies: [ctx.attrRoots[conform[1]]] };
+    return { Function: functionForSentence(node.text), Reference: ctx.artifactName, Requirement: {}, Dependencies: [ctx.attrRoots[conform[1]]] };
   }
   // Unclassified leaf: no check function found — empty Requirement, flagged for a warning.
-  return { Function: 'Validation', Reference: ctx.artifactName, Requirement: {}, Dependencies: [], unclassified: true };
+  return { Function: functionForSentence(node.text), Reference: ctx.artifactName, Requirement: {}, Dependencies: [], unclassified: true };
 }
 
 /** Construct a single model rule object from a requirement-tree node. */
@@ -1335,7 +1355,7 @@ function finalizeEmitted() {
       delete r.__carried;
       if (!carried || r.Status === 'Removed') continue;
       if (referencedIds(r).every((x) => liveIds.has(x))) continue;
-      r.Function = 'Validation';
+      r.Function = functionForSentence(r.ValidationCriteria.MustSatisfy || '');
       r.Type = 'Dynamic';
       r.ValidationCriteria.Requirement = {};
       r.ValidationCriteria.Condition = {};
@@ -1701,4 +1721,4 @@ function main() {
 
 if (require.main === module) runMain(main, USAGE);
 
-module.exports = { isDeprecatedEntity, deprecateColumnRules, statusLetterFor, columnsCompositeId, pascalToDisplay, deepMerge, normalizeLookup, hasSection, getSectionText, conditionAnchorsOf };
+module.exports = { isDeprecatedEntity, deprecateColumnRules, statusLetterFor, columnsCompositeId, pascalToDisplay, deepMerge, normalizeLookup, hasSection, getSectionText, conditionAnchorsOf, functionForSentence };
