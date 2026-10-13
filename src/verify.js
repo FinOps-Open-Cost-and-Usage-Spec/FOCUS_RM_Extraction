@@ -281,9 +281,72 @@ function parseWhenClause(mustSatisfy, columnIds) {
     const t = /^([A-Z][A-Za-z0-9]*) is (not )?(null|"[^"]*")$/.exec(term.trim());
     if (!t) return null;            // one unparseable term makes the whole clause prose
     if (!columnIds.has(t[1])) return null;
-    parsed.push(t[1]);
+    parsed.push({ column: t[1], negated: Boolean(t[2]), value: t[3] === 'null' ? null : t[3].slice(1, -1) });
   }
-  return parsed;
+  return { clause: m[1], terms: parsed, operator: / or /.test(m[1]) ? 'OR' : 'AND' };
+}
+
+/**
+ * The Condition the parsed clause asks for, in the shape the published model uses: one
+ * CheckValue/CheckNotValue per term, wrapped in a Composite when the clause has several.
+ * Printed with the failure so the gap reads as "this is missing", not "something is wrong".
+ */
+function expectedConditionSketch(when) {
+  const sketch = (t) => ({
+    CheckFunction: t.negated ? 'CheckNotValue' : 'CheckValue',
+    ColumnName: t.column,
+    Value: t.value,
+  });
+  return when.terms.length === 1
+    ? sketch(when.terms[0])
+    : { CheckFunction: when.operator, Checks: when.terms.map(sketch) };
+}
+
+/**
+ * Explain each rule that failed the Condition check, one block per rule.
+ *
+ * The check fires on a sentence whose clause names columns and literals, which is as far as the
+ * extractor can see: a Condition is curated in the model and carried forward by rule id, never
+ * derived from the sentence. So the useful report is not "this rule is wrong" but where the
+ * curation was supposed to come from and why nothing arrived: a brand new entity, a new rule in
+ * an existing one, a baseline Condition that did not survive the run, or a gap already in the
+ * baseline. Each has a different fix, and the rule id alone does not distinguish them.
+ */
+function reportMissingConditions(offenders, { ruleFile, baselineRules, baselineFiles }) {
+  const indent = '\n                 ';
+  const n = offenders.length;
+  console.log(`     ${n} rule(s) with a clause that names columns and literals, and no Condition to check it:`);
+  console.log('     A Condition is curated in the model and carried forward by rule id; it is never');
+  console.log('     derived from the sentence, so a rule with no curation to inherit arrives empty.');
+  for (const { id, rule, when } of offenders) {
+    const file = ruleFile[id] || '(unknown file)';
+    const prev = baselineRules[id];
+    const prevVc = (prev || {}).ValidationCriteria || {};
+    let cause;
+    if (!prev && !baselineFiles.has(file)) {
+      cause = `new entity: the baseline has no ${file},${indent}so no rule in it had a Condition to carry`;
+    } else if (!prev) {
+      cause = `new rule: ${file} exists in the baseline but holds no ${id}, so this sentence has${indent}never been curated`;
+    } else if (Object.keys(prevVc.Condition || {}).length) {
+      cause = `baseline ${id} carries a Condition that did not survive this run`;
+      if (normalize(prevVc.MustSatisfy || '') !== normalize(rule.ValidationCriteria.MustSatisfy || '')) {
+        cause += `, and its sentence${indent}differs: "${prevVc.MustSatisfy}"`;
+      } else {
+        cause += `, and its sentence is unchanged, so the${indent}carry was dropped, usually a ModelRuleId inside it that no longer resolves`;
+      }
+    } else {
+      cause = `baseline ${id} has an empty Condition too: the gap predates this run`;
+    }
+    console.log('');
+    console.log(`     ${id}  ${file}`);
+    console.log(`       sentence  "${rule.ValidationCriteria.MustSatisfy}"`);
+    console.log(`       clause    When ${when.clause},`);
+    console.log(`       cause     ${cause}`);
+    console.log(`       expected  Condition like ${JSON.stringify(expectedConditionSketch(when))}`);
+    console.log('       fix       curate the Condition on this rule in the baseline release, or map the');
+    console.log('                 sentence in check_function_lookup.json');
+  }
+  console.log('');
 }
 
 /**
@@ -298,17 +361,25 @@ function parseWhenClause(mustSatisfy, columnIds) {
  * The one hard failure is a rule whose sentence states a machine-checkable "When ..." clause and
  * carries no Condition: the clause names columns and literals, so a Condition is expected.
  */
-function newRuleCurationAudit(check, warn) {
+function newRuleCurationAudit(check, warn, silent = false) {
   const baselineRoot = path.join(BASELINE_ROOT, 'model_rules');
-  const baselineIds = new Set();
+  const baselineRules = {};          // id -> baseline rule, for diagnosing a Condition that did not carry
+  const baselineFiles = new Set();   // model_rules-relative paths, to tell a new entity from a new rule
   if (fs.existsSync(baselineRoot)) {
     for (const file of walkFiles(baselineRoot)) {
-      for (const id of Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')))) baselineIds.add(id);
+      baselineFiles.add(path.relative(baselineRoot, file));
+      Object.assign(baselineRules, JSON.parse(fs.readFileSync(file, 'utf8')));
     }
   }
+  const baselineIds = new Set(Object.keys(baselineRules));
 
   const rules = {};
-  for (const file of walkFiles(OUTPUT_ROOT)) Object.assign(rules, JSON.parse(fs.readFileSync(file, 'utf8')));
+  const ruleFile = {};               // id -> model_rules-relative path of the generated file
+  for (const file of walkFiles(OUTPUT_ROOT)) {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    for (const id of Object.keys(parsed)) ruleFile[id] = path.relative(OUTPUT_ROOT, file);
+    Object.assign(rules, parsed);
+  }
   const columnIds = new Set(
     Object.values(rules)
       .filter((r) => r.EntityType === 'Column' || r.EntityType === 'Object')
@@ -316,18 +387,15 @@ function newRuleCurationAudit(check, warn) {
   );
 
   const defaulted = [];
-  let missingCondition = 0;
+  const missingCondition = [];
   for (const id of Object.keys(rules).sort()) {
     const rule = rules[id];
     if (rule.Status === 'Removed') continue;
     const vc = rule.ValidationCriteria;
 
     // Applies to every rule, new or not: a parseable clause always expects a Condition.
-    if (!Object.keys(vc.Condition || {}).length && parseWhenClause(vc.MustSatisfy, columnIds)) {
-      missingCondition++;
-      console.log('     conditional sentence with no Condition', id);
-      console.log(`       "${vc.MustSatisfy}"`);
-    }
+    const when = Object.keys(vc.Condition || {}).length ? null : parseWhenClause(vc.MustSatisfy, columnIds);
+    if (when) missingCondition.push({ id, rule, when });
 
     if (baselineIds.has(id)) continue;
     const gaps = [];
@@ -341,7 +409,10 @@ function newRuleCurationAudit(check, warn) {
     if (gaps.length) defaulted.push({ id, gaps });
   }
 
-  check(missingCondition === 0, 'Rules stating a machine-checkable "When ..." clause carry a Condition');
+  check(missingCondition.length === 0, 'Rules stating a machine-checkable "When ..." clause carry a Condition');
+  if (missingCondition.length && !silent) {
+    reportMissingConditions(missingCondition, { ruleFile, baselineRules, baselineFiles });
+  }
 
   if (defaulted.length) {
     warn(`${defaulted.length} rule(s) are new in this run and carry default curation; review each before publishing:`);
@@ -465,7 +536,7 @@ function runVerify({ silent = false, specification, baseline, output } = {}) {
   const warn = (msg) => warnings.push(msg);
   structuralChecks(check, warn);
   droppedActiveAudit(check, warn, silent);
-  newRuleCurationAudit(check, warn);
+  newRuleCurationAudit(check, warn, silent);
   datasetAudit(check);
   if (!silent) {
     if (warnings.length) {
@@ -489,4 +560,4 @@ function main() {
 
 if (require.main === module) runMain(main, USAGE);
 
-module.exports = { runVerify };
+module.exports = { runVerify, parseWhenClause, expectedConditionSketch, reportMissingConditions };

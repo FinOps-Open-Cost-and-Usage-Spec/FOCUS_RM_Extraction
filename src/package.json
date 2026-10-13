@@ -9,7 +9,7 @@
     "verify": "node verify.js",
     "diff": "node diff_model.js",
     "validate": "node validate_markdown.js",
-    "extract:fixtures": "node extract_rm.js --specification test/fixtures/specification --baseline test/fixtures/baseline --output .fixture-output",
+    "extract:fixtures": "node extract_rm.js --specification test/fixtures/specification --baseline test/fixtures/baseline --output .fixture-output --clean",
     "verify:fixtures": "node verify.js --specification test/fixtures/specification --baseline test/fixtures/baseline --output .fixture-output",
     "validate:fixtures": "node validate_markdown.js --specification test/fixtures/specification",
     "diff:fixtures": "node diff_model.js --baseline test/fixtures/baseline --output .fixture-output",

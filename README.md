@@ -171,6 +171,7 @@ Three folders drive every run, and all three are options:
 | `--specification <folder>` | the markdown to read: the folder holding `datasets/`, `attributes/`, `operating_model_conditions/` | `../../../specification` |
 | `--baseline <folder>` | the release to diff against and copy assets from | `../releases/latest` |
 | `--output <folder>` | where the generated model is written | `./output` |
+| `--clean` | extract only: delete the output folder before writing | off |
 
 `extract_rm.js` and `verify.js` take all three. `validate_markdown.js` reads only the markdown,
 so it takes `--specification` alone; `diff_model.js` compares two generated trees and never reads
@@ -196,6 +197,13 @@ DATASET_FOLDERS=billing_period npm run extract   # limit to specific dataset fol
 
 `--output` moves the whole generated tree, `model_rules/` and the copied release assets alike.
 Pass the same folder to `npm run diff` to compare a redirected run.
+
+The output folder must be empty or absent, and `npm run extract` stops with a usage error when
+it is not. Extraction writes the entities the markdown expresses and never deletes, so a file
+from an earlier run survives untouched; if the specification has since dropped that entity, or
+`DATASET_FOLDERS` limited the run to part of the tree, the leftover is indistinguishable from a
+freshly derived file and `npm run diff` reports it as a generated entity the baseline lacks.
+Pass `--clean` to have the extractor remove the folder first.
 
 ## Fixtures
 
@@ -382,7 +390,30 @@ normalized from generated output. Treating that drift as a gap would mean encodi
 orderings into the generator. `--strict` therefore fails on content gaps only.
 
 For entities that differ, the detail section lists rules present on only one side and,
-for changed rules, each differing field as `path: baseline -> generated`.
+for changed rules, each differing field. Scalars render inline as
+`path: baseline -> generated`. The two shapes that used to be unreadable there get their
+own render:
+
+* **Lists** (`ValidationCriteria.Dependencies`, `…Requirement.Items`) resolve to one of
+  ordering only, additions, or deletions, rather than two clipped JSON blobs. An
+  ordering-only difference prints both orders; additions and deletions name each rule
+  with `+` and `-`. Where every id in the list shares a prefix it is hoisted into the
+  header (`[ids under CAU-SkuPriceDetails-C-…]`) and only the tails are listed, so a
+  mixed-entity list keeps its full ids.
+* **Long sentences** (`ValidationCriteria.MustSatisfy`) align on the part that changed:
+  the matching head and tail are elided and the difference is shown in context, instead
+  of clipping both sides at the same identical opening clause.
+
+```
+~ CAU-SkuPriceDetails-C-000-C
+    EntityName: "Sku Price Details" -> "SKU Price Details"
+    ValidationCriteria.Requirement.Items: +2 added, 7 kept (7 -> 9 items)  [ids under CAU-SkuPriceDetails-C-…]
+        + 034-C
+        + 039-C
+    ValidationCriteria.MustSatisfy: text differs at char 96
+        baseline:  "…ts, separated with the letter `T`."
+        generated: "…ts, separated with the letter T."
+```
 
 ```bash
 npm run diff                  # summary + per-entity detail

@@ -67,6 +67,9 @@
     "ArtifactType": "N",
     "IdPrefix": "CON",
     "AnchorPrefixes": ["operatingmodelconditions", "conditions"],
+    "PhraseAliases": {
+      "includes pricing and billing currency differences": "IncludesPricingBillingCurrencyDifferences"
+    },
     "Headings": {
       "Requirements": "Requirements",
       "Id": ["Operating Model Condition ID", "Condition ID"],

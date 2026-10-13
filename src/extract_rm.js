@@ -33,8 +33,9 @@
  * recorded as a warning so the lookup can be extended unless it reused an Active previous
  * rule that was itself curated as Dynamic, in which case it is accepted as-is.
  * A populated Requirement is Static, an empty one Dynamic.
- * Conditions are resolved from `#operatingmodelconditions.<anchor>`
- * links to their Condition IDs.
+ * Conditions are resolved to their Condition IDs from `#operatingmodelconditions.<anchor>`
+ * links and from display names written as prose, since the spec links a condition only on
+ * its first use in a page.
  */
 
 const fs = require('fs');
@@ -88,18 +89,25 @@ const BCP14_KEYWORD = /\b(MUST NOT|MUST|SHALL NOT|SHALL|SHOULD NOT|SHOULD|MAY)\b
 // unclassified path. Link text renders to the bare id, so "[Tags](#...)" matches.
 const INCLUDE_RE = /\b(?:MUST|SHOULD|MAY) include ([A-Z]\w*)\b/;
 const CONFORM_RE = /MUST conform to (\w+) requirements/;
-// A leaf rule's Function names what its sentence is about, and two of those namings are readable
-// straight off the sentence: one about whether a value may be null is Nullability, and one about
-// the shape a value takes is Format. Both conventions hold for every rule in the published model,
-// and the specification's own model suite asserts them, so a leaf the check-function lookup did
-// not map is named this way rather than falling to a blanket 'Validation'.
+// A leaf rule's Function names what its sentence is about, and three of those namings are
+// readable straight off the sentence: one about whether a value may be null is Nullability, one
+// naming the kind of value it is is Type, and one about the shape a value takes is Format. All
+// three conventions hold for every rule in the published model, and the specification's own model
+// suite asserts them (test_nullability_function.py, test_type_function.py,
+// test_format_function.py), so a leaf the check-function lookup did not map is named this way
+// rather than falling to a blanket 'Validation'.
 const NULLABILITY_RE = /be null/i;
+const TYPE_RE = /of type/i;
 const FORMAT_RE = /\bformat\b/i;
+// Entity types a requirement sentence can name, and whose rules are checked for naming another.
+const MENTIONABLE_ENTITY_TYPES = new Set(['Column', 'Object']);
 // Entity types whose "MUST include <X>" sentences assert that a contained artifact is present.
 const PRESENCE_ENTITY_TYPES = new Set(['Dataset', 'DataModel']);
 const CONDITIONAL_RE = /\bwhen\b/;
 // A column's root rule, the one every other rule about that column hangs off.
 const C000_RE = /-C-000-/;
+// A dataset-scoped rule id: artifact type D, as a column's presence rule always is.
+const DATASET_RULE_RE = /-D-\d+-[A-Z]$/;
 // Words that put a requirement under scope: it binds only in the circumstances they introduce.
 const SCOPE_WORDS = ['when', 'unless', 'where', 'if it'];
 // Fragments where those words are part of the requirement's own prose rather than a scope clause
@@ -114,9 +122,12 @@ const SCOPE_EXCLUSIONS = [
 ];
 
 // Loaded once in main(): the per-release sentence -> check-function lookup, the
-// condition anchor -> ConditionId map, and a dedup'd set of unmapped sentences.
+// condition anchor and prose-phrase maps, and a dedup'd set of unmapped sentences.
 let CHECK_LOOKUP = {};
 let CONDITIONS = {};
+// [{ id, re }] per condition display name (and contract alias), longest phrase first, for
+// reading conditions out of sentences that name one in prose rather than linking it.
+let CONDITION_PHRASES = [];
 // Every Condition ID the spec defines, for validating ids on emitted rules.
 let CONDITION_IDS = new Set();
 // EntityId -> Display Name for every entity the spec defines, collected before any rule is built.
@@ -144,6 +155,10 @@ const ORDER_CONFLICTS = [];
 // Condition ids on an emitted rule that no conditions markdown file defines: a dangling reference,
 // whether it came from a sentence anchor or was carried from the baseline.
 const UNKNOWN_CONDITIONS = [];
+// Contract PhraseAliases naming a condition this spec does not define: dropped and reported.
+const UNKNOWN_ALIASES = [];
+// Dependencies added because a rule's sentence names another column or object.
+const MENTION_DEPENDENCIES = [];
 const EMITTED = []; // { outPath, rules } per file, written after the carry-forward post-pass
 // Baseline entities with no markdown left: carried forward as all-tombstone files, and reported.
 const REMOVED_ENTITIES = [];
@@ -157,6 +172,11 @@ const CARRIED_CONDITIONS = [];
 // ---------------------------------------------------------------------------
 // Text / id helpers
 // ---------------------------------------------------------------------------
+
+/** Escape a literal for embedding in a RegExp. */
+function escapeRe(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 /** Split a PascalCase id into a spaced Display Name (e.g. "BillingPeriodEnd" -> "Billing Period End"). */
 function pascalToDisplay(id) {
@@ -345,6 +365,37 @@ function conditionAnchorsOf(tokens) {
   return out;
 }
 
+// The phrase every condition clause hangs off. Phrase matching is confined to sentences that
+// carry it, so an ordinary requirement that happens to echo a condition's wording is not read
+// as being gated on that condition.
+const OPERATING_MODEL_RE = /\boperating model\b/i;
+
+/**
+ * Condition IDs a sentence names in prose, in order of appearance.
+ *
+ * Overlapping matches are resolved longest first: CONDITION_PHRASES is ordered by length, and a
+ * span already claimed is not matched again, so a display name contained in a longer one cannot
+ * also fire.
+ */
+function conditionPhrasesOf(text, phrases = CONDITION_PHRASES) {
+  if (!text || !OPERATING_MODEL_RE.test(text)) return [];
+  const haystack = text.toLowerCase();
+  const taken = [];
+  const found = [];
+  for (const { id, re } of phrases) {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(haystack))) {
+      const start = m.index;
+      const end = start + m[0].length;
+      if (taken.some(([s, e]) => s < end && start < e)) continue;
+      taken.push([start, end]);
+      found.push([start, id]);
+    }
+  }
+  return found.sort((a, b) => a[0] - b[0]).map(([, id]) => id);
+}
+
 /** Parse a `list` token's items into a tree of { text, children, conditionAnchors }. */
 function parseListItems(listToken) {
   return listToken.items.map((item) => {
@@ -431,12 +482,15 @@ function isPlainObject(v) {
 /**
  * The Function for a sentence no check-function mapping covers.
  *
- * Nullability is tested first: a sentence saying something "be null" states nullability directly,
- * while "format" can appear inside such a sentence. A sentence answering to both conventions
- * cannot satisfy them at once, so one of them has to be the reading.
+ * The three conventions are tested most specific first. "be null" and "of type" are fixed phrases
+ * that state nullability and type directly, while the word "format" can appear incidentally
+ * inside a sentence about either ("MUST be of type String in the DateTimeFormat format"). A
+ * sentence answering to two conventions cannot satisfy both suite tests at once, so one of them
+ * has to be the reading; no sentence in the spec trips more than one today.
  */
 function functionForSentence(text) {
   if (NULLABILITY_RE.test(text)) return 'Nullability';
+  if (TYPE_RE.test(text)) return 'Type';
   if (FORMAT_RE.test(text)) return 'Format';
   return 'Validation';
 }
@@ -577,16 +631,28 @@ function makeRule(node, order, childKeys, ctx, modelVersionIntroduced, status, p
   // A populated Requirement (a check-function template) is Static; an empty one is Dynamic.
   const type = Object.keys(c.Requirement).length > 0 ? 'Static' : 'Dynamic';
 
-  // Conditions come from `#operatingmodelconditions.<anchor>` links in the sentence. A matched
-  // baseline rule can carry conditions its sentence does not link, so the baseline list is
-  // adopted when the sentence yields none; a derived list always wins, matching how a curated Requirement is handled. The
-  // legacy ApplicabilityCriteria key is read too, so an older BASELINE_DIR still resolves.
-  // A Condition entity is the thing being evaluated, so a condition link in its own
+  // Conditions come from the sentence: `#operatingmodelconditions.<anchor>` links, and condition
+  // display names written as prose. Both are needed because the spec links a condition only on
+  // its first use in a page, so the second and later sentences gating on one name it in prose
+  // alone; reading anchors only would emit those rules ungated, and would silently half-gate a
+  // sentence that links one condition and spells out another. Prose matches lead because they
+  // run in reading order (a link's text is a phrase too, so it is normally matched there as
+  // well); anchors then contribute anything the prose did not, such as a link whose text is not
+  // the display name. A matched baseline rule can still carry conditions the sentence does not
+  // name, so the baseline list is adopted when the sentence yields none; a derived list always
+  // wins, matching how a curated Requirement is handled. The legacy ApplicabilityCriteria key is
+  // read too, so an older BASELINE_DIR still resolves.
+  // A Condition entity is the thing being evaluated, so a condition named in its own
   // sentence is an operand, not a gate: "IncludesListUnitPrices MUST evaluate to true when
   // IncludesUnitPricing is true" would otherwise record IncludesUnitPricing as gating the rule,
-  // making it inapplicable in the very case its sibling rule says evaluates to false.
-  const anchors = ctx.entityType === 'Condition' ? [] : (node.conditionAnchors || []);
-  const derivedConditions = anchors.map((a) => CONDITIONS[a] || a);
+  // making it inapplicable in the very case its sibling rule says evaluates to false. That holds
+  // doubly for prose matching, since every condition's own rules state its display name.
+  const isCondition = ctx.entityType === 'Condition';
+  const anchors = isCondition ? [] : (node.conditionAnchors || []);
+  const derivedConditions = [];
+  for (const id of (isCondition ? [] : conditionPhrasesOf(node.text)).concat(anchors.map((a) => CONDITIONS[a] || a))) {
+    if (!derivedConditions.includes(id)) derivedConditions.push(id);
+  }
   const prevConditions = prevRule && (prevRule.Conditions || prevRule.ApplicabilityCriteria);
   const conditions = derivedConditions.length || !Array.isArray(prevConditions)
     ? derivedConditions
@@ -849,27 +915,50 @@ function requireEntities(count, label, dir, idHeading) {
 }
 
 /**
- * Map a condition anchor to its Condition ID by scanning the conditions dir.
+ * Scan the conditions dir for the two ways a sentence can name a condition.
  *
- * Anchors are the entity's display name lowercased with spaces removed and punctuation kept
+ * `anchors` maps a condition anchor to its Condition ID. Anchors are the entity's display name
+ * lowercased with spaces removed and punctuation kept
  * (e.g. "Includes Pricing-Billing Currency Differences" -> `includespricing-billingcurrencydifferences`),
  * while the Condition ID drops that punctuation and any joining words. The two coincide for
  * most conditions, so both spellings are keyed: the display name resolves the anchors the
  * markdown actually writes, the id keeps ids used directly as anchors resolving.
+ *
+ * `phrases` maps the display name as it reads in prose ("includes unit pricing") to the same ID,
+ * for the links the spec does not write. The spec links a condition only on its first use in a
+ * page, so every later sentence gating on it carries the phrase alone; matching anchors only
+ * would read those sentences as ungated. Contract PhraseAliases add the wordings that differ
+ * from the display name. Sorted longest first so an alias or a longer display name is tried
+ * before a shorter one it contains.
  */
-function loadConditions(locationAbs, headings) {
-  const map = {};
-  if (!fs.existsSync(locationAbs)) return map;
+function loadConditions(locationAbs, headings, aliases) {
+  const anchors = {};
+  const byPhrase = {};
+  if (!fs.existsSync(locationAbs)) return { anchors, phrases: [] };
   for (const file of fs.readdirSync(locationAbs).filter((f) => f.endsWith('.md'))) {
     const tokens = marked.lexer(fs.readFileSync(path.join(locationAbs, file), 'utf8'));
     if (!hasSection(tokens, headings.Id)) continue;
     const id = getSectionText(tokens, headings.Id);
-    map[id.toLowerCase()] = id;
+    anchors[id.toLowerCase()] = id;
     if (headings.DisplayName && hasSection(tokens, headings.DisplayName)) {
-      map[getSectionText(tokens, headings.DisplayName).toLowerCase().replace(/ /g, '')] = id;
+      const displayName = getSectionText(tokens, headings.DisplayName);
+      anchors[displayName.toLowerCase().replace(/ /g, '')] = id;
+      byPhrase[displayName.toLowerCase()] = id;
     }
   }
-  return map;
+  // An alias naming a condition this spec does not define is a stale contract entry, not a
+  // reason to stop: the rest of the run is unaffected, so it is dropped and reported.
+  for (const [phrase, id] of Object.entries(aliases || {})) {
+    if (!Object.values(anchors).includes(id)) {
+      UNKNOWN_ALIASES.push({ phrase, conditionId: id });
+      continue;
+    }
+    byPhrase[phrase.toLowerCase()] = id;
+  }
+  const phrases = Object.entries(byPhrase)
+    .sort((a, b) => b[0].length - a[0].length)
+    .map(([phrase, id]) => ({ id, re: new RegExp(`\\b${escapeRe(phrase)}\\b`, 'g') }));
+  return { anchors, phrases };
 }
 
 /** The column whose presence a dataset rule asserts, or null. */
@@ -929,6 +1018,83 @@ function presenceRulesByColumn(dsRules) {
     if (top.length === 1) byColumn[col] = top[0];
   }
   return byColumn;
+}
+
+/**
+ * Give every presence-grouping composite the complete list of conditions its group states.
+ *
+ * A column whose presence is stated in several sentences ("MUST include X when A, SHOULD include
+ * X when B, MAY include X otherwise") has them grouped under one dataset composite, and that
+ * composite is the rule the column's root depends on. Each condition is written on the leaf whose
+ * sentence names it, so the composite's own sentence names none ("CostAndUsage MUST adhere to the
+ * following PricingCurrencyContractedUnitPrice requirements:") and it arrives either empty or
+ * holding whatever list the baseline happened to carry, which no longer has to match the
+ * sentences underneath it. Either way a consumer reading the composite, or the column root that
+ * inherits from it, cannot see what actually gates the column.
+ *
+ * So the composite takes the union of the conditions on the rules it evaluates, in the order they
+ * are first named, which is the markdown's order. The group is a set of alternatives, so the
+ * union is the complete set of circumstances under which the column is required at all.
+ * Conditions are derived from the markdown on every run, so this wins over a carried list - but
+ * only when the group states some: a group whose rules name no condition leaves the composite's
+ * own list alone, rather than wiping a curated one for a rule the markdown gates another way.
+ *
+ * Runs before the columns are emitted, so linkPresenceRule() carries the completed list onto each
+ * column root.
+ */
+function completePresenceConditions(dsRules, presenceByColumn) {
+  for (const presenceId of Object.values(presenceByColumn)) {
+    const rule = dsRules[presenceId];
+    if (!rule || rule.Function !== 'Composite') continue;
+
+    // The same traversal presenceRulesByColumn() used to decide this composite governs the
+    // column: the rules its Requirement evaluates, and theirs in turn.
+    const conditions = [];
+    const seen = new Set([presenceId]);
+    const visit = (id) => {
+      if (seen.has(id)) return;
+      seen.add(id);
+      const child = dsRules[id];
+      if (!child || child.Status === 'Removed') return;
+      for (const c of child.Conditions || []) if (!conditions.includes(c)) conditions.push(c);
+      for (const ref of modelRuleRefs(child.ValidationCriteria.Requirement || {})) visit(ref);
+    };
+    for (const ref of modelRuleRefs(rule.ValidationCriteria.Requirement || {})) visit(ref);
+
+    if (conditions.length) rule.Conditions = conditions;
+  }
+}
+
+/**
+ * Tie a column's root composite to the dataset rule that governs the column's presence.
+ *
+ * A column's requirements only bind when the dataset includes the column, so the root depends on
+ * that presence rule. It goes last, after the root's own children: the children are what the
+ * root is composed of and are read in Order sequence, while the presence rule is a different
+ * kind of statement, made by the dataset about whether the column is there at all. Putting it
+ * among the children would interleave the two and break the Items-lead-Dependencies reading of
+ * the composite. datasetDepsLast() holds the invariant for the whole model.
+ *
+ * The root inherits that rule's conditions for the same reason. Whatever gates the column's
+ * presence gates its whole requirement tree, and the root's own sentence never says so
+ * ("CredentialId MUST adhere to the following requirements:" names no condition), which leaves
+ * the gate stated once on the dataset side and nowhere on the column: a consumer reading the
+ * column alone would apply its rules unconditionally. The presence rule's list is derived from
+ * the markdown on every run, so it wins over anything carried from the baseline, the same way a
+ * derived Requirement does. A column whose presence is governed by a group of conditional rules
+ * resolves to their composite, whose list completePresenceConditions() has already filled in from
+ * the group, so the root inherits the same complete list either way.
+ */
+function linkPresenceRule(rootRule, presenceId, presenceRule) {
+  const deps = rootRule.ValidationCriteria.Dependencies;
+  // The baseline lists this dependency too, wherever it happened to sit, and it was carried in as
+  // a cross-entity dependency before the current presence rule was resolved. Drop that copy so
+  // the one appended here is the only one.
+  const existing = deps.indexOf(presenceId);
+  if (existing !== -1) deps.splice(existing, 1);
+  deps.push(presenceId);
+
+  if (presenceRule) rootRule.Conditions = (presenceRule.Conditions || []).slice();
 }
 
 /**
@@ -1033,26 +1199,9 @@ function expandTree(root, ctx, prevRules, outPath) {
     output[id] = makeRule(spec.node, orders[idx], childKeys, ctx, introduced, ctx.entityStatus || 'Active', prev);
   });
 
-  // A column's requirements only bind when the dataset includes the column, so the column's root
-  // composite depends on the dataset rule governing that column's presence.
-  //
-  // That presence rule carries the column as its EntityId, so it joins the root's own children as a
-  // same-entity dependency, and those are read in Order sequence. It is therefore placed by its
-  // Order rather than appended: a presence rule that sits early in the dataset would otherwise
-  // trail children that come after it.
   const presenceId = ctx.presenceByColumn && ctx.presenceByColumn[ctx.artifactName];
   if (presenceId && specs.length) {
-    const deps = output[idByIdx[0]].ValidationCriteria.Dependencies;
-    // The baseline lists this dependency too, and it was carried in as a cross-entity dependency
-    // before the current presence rule was resolved. Drop that copy so the placement below decides
-    // where it goes.
-    const existing = deps.indexOf(presenceId);
-    if (existing !== -1) deps.splice(existing, 1);
-    const presenceRule = ctx.datasetRules && ctx.datasetRules[presenceId];
-    const presenceOrder = presenceRule && typeof presenceRule.Order === 'number' ? presenceRule.Order : Infinity;
-    const at = deps.findIndex((d) => output[d] && output[d].Order > presenceOrder);
-    if (at === -1) deps.push(presenceId);
-    else deps.splice(at, 0, presenceId);
+    linkPresenceRule(output[idByIdx[0]], presenceId, ctx.datasetRules && ctx.datasetRules[presenceId]);
   }
 
   if (prevRules) {
@@ -1181,8 +1330,8 @@ function addColumnsComposite(dsRules, columnRootIds, ctx, prevRules, reservedId)
  * when..., MAY include X otherwise") has them grouped under one dataset composite, and that
  * composite is what the column's root depends on. classify() gives every composite the enclosing
  * entity as its Reference, which for these rules names the dataset rather than the column being
- * required, and leaves the conditions empty even though the column only applies under its own.
- * Both are corrected here, once the column roots exist to read them from.
+ * required. That is corrected here, once the column roots exist to read the names from. The
+ * composite's conditions are settled earlier, by completePresenceConditions().
  */
 function alignPresenceComposites(dsRules, columnRootsById, presenceByColumn) {
   for (const colId of Object.keys(presenceByColumn)) {
@@ -1192,7 +1341,6 @@ function alignPresenceComposites(dsRules, columnRootsById, presenceByColumn) {
     groupRule.Reference = colId;
     groupRule.EntityId = colId;
     groupRule.EntityName = DISPLAY_NAMES[colId] || pascalToDisplay(colId);
-    groupRule.Conditions = (root.Conditions || []).slice();
   }
 }
 
@@ -1268,6 +1416,134 @@ function referencedIds(rule) {
  * inherited letter stays as the model recorded it. Every reference to a renamed rule is rewritten
  * with it, across all files, so the rename is invisible to everything but the id itself.
  */
+/**
+ * Depend on every other column or object a rule's sentence names.
+ *
+ * A requirement that reads another column ("RequesterDetails MUST NOT be null when PrincipalId is
+ * not null") is evaluated against that column, so the model has to say so: the spec's own suite
+ * asserts that every Column/Object EntityId a MustSatisfy mentions appears in some Dependency
+ * (test_mustsatisfy_entityid_has_dependency.py), and the published release satisfies it on every
+ * rule. Nothing derived it, though. Cross-entity dependencies are carried from a matched baseline
+ * rule, which covers a sentence the model already holds and leaves every new or reworded one with
+ * nothing, so the gap grows with each draft rather than closing.
+ *
+ * The referenced column's root is the target. Which of a column's rules a dependency should point
+ * at is a curated decision the sentence does not state, and sometimes a specific rule is meant;
+ * the root is the one answer that is always true, since it is what the whole column amounts to.
+ * Curation therefore still wins: a reference already covered by an existing dependency is left
+ * alone, tested exactly as the suite tests it, by substring, so that a curated dependency on any
+ * rule of that column counts and nothing redundant is appended.
+ *
+ * Runs before relabelNewRuleStatuses() so a target renamed there carries the new id here too.
+ * Mutates the rules in `allRules` and returns the { rule, target } pairs it added.
+ */
+function linkMentionedEntities(allRules) {
+  const added = [];
+  // EntityId -> its root rule id, for the column and object entities a sentence can name.
+  const roots = {};
+  const mentionable = new Set();
+  for (const id of Object.keys(allRules)) {
+    const rule = allRules[id];
+    if (rule.Status !== 'Active' || !MENTIONABLE_ENTITY_TYPES.has(rule.EntityType) || !rule.EntityId) continue;
+    mentionable.add(rule.EntityId);
+    if (C000_RE.test(id)) roots[rule.EntityId] = id;
+  }
+  // The suite's own pattern: a bare word, not the tail of a dotted reference.
+  const patterns = new Map([...mentionable].map((e) => [e, new RegExp(`(?<!\\.)\\b${escapeRe(e)}\\b`)]));
+
+  for (const id of Object.keys(allRules)) {
+    const rule = allRules[id];
+    if (rule.Status !== 'Active' || !MENTIONABLE_ENTITY_TYPES.has(rule.EntityType)) continue;
+    const vc = rule.ValidationCriteria;
+    const text = vc.MustSatisfy || '';
+    const deps = vc.Dependencies;
+    const mentioned = [];
+    for (const [entityId, re] of patterns) {
+      if (entityId === rule.EntityId) continue;
+      const at = text.search(re);
+      if (at === -1 || deps.some((d) => d.includes(entityId))) continue;
+      const target = roots[entityId];
+      if (!target || target === id) continue;
+      mentioned.push([at, target]);
+    }
+    // Appended, so a composite's Items keep leading its Dependencies, and in the order the
+    // sentence names them.
+    for (const [, target] of mentioned.sort((a, b) => a[0] - b[0])) {
+      if (deps.includes(target)) continue;
+      deps.push(target);
+      added.push({ rule: id, target });
+    }
+  }
+  return added;
+}
+
+/**
+ * Keep a column root's dataset dependencies last.
+ *
+ * A -000- root's Dependencies are its own children, in Order, plus the dataset rule governing
+ * the column's presence. The two are different kinds of statement: the children are what the
+ * root is composed of, the presence rule is the dataset's statement about whether the column is
+ * there at all. Interleaving them by Order makes the child sequence unreadable and breaks the
+ * composite's Items-lead-Dependencies shape, so every -D- entry is moved to the end. It sits
+ * outside the Order sequence the rest of the list reads in, which is why depsFollowOrder()
+ * passes over it.
+ *
+ * Enforced as its own pass rather than at each insertion point, because the entries arrive from
+ * three places that cannot see each other: linkPresenceRule() while the column is built, the
+ * cross-entity carry from a matched baseline rule, and linkMentionedEntities() afterwards.
+ * Relative order within each group is kept, so nothing else moves.
+ */
+function datasetDepsLast(allRules) {
+  for (const id of Object.keys(allRules)) {
+    if (!C000_RE.test(id)) continue;
+    const deps = allRules[id].ValidationCriteria.Dependencies;
+    const dataset = deps.filter((d) => DATASET_RULE_RE.test(d));
+    if (!dataset.length) continue;
+    const rest = deps.filter((d) => !DATASET_RULE_RE.test(d));
+    deps.length = 0;
+    deps.push(...rest, ...dataset);
+  }
+}
+
+/**
+ * Read a rule's dependencies on one entity in that entity's own Order.
+ *
+ * Order is where a rule sits in the markdown about its entity, so two entries about the same
+ * entity have a documented sequence and the list reads in it. Entries about different entities
+ * are unrelated and keep their positions.
+ *
+ * Dataset rules are not in any such sequence. A -D- rule is written in the dataset's markdown and
+ * ordered against the dataset's other sentences, so its Order says nothing about where it belongs
+ * among a column's own rules, even though a presence rule carries the column's EntityId. Reading
+ * the two scales as one would shuffle the column's list by a number that is not about the column.
+ * They are placed by datasetDepsLast(), at the end, and passed over here.
+ *
+ * An entry whose rule holds no position in the markdown (Order -1, the columns composite) is
+ * pinned where it is for the same reason: there is no sequence to read it into.
+ */
+function depsFollowOrder(allRules) {
+  for (const id of Object.keys(allRules)) {
+    const deps = (allRules[id].ValidationCriteria || {}).Dependencies;
+    if (!Array.isArray(deps) || deps.length < 2) continue;
+
+    const byEntity = new Map(); // EntityId -> [{ slot, dep, order }], in list order
+    deps.forEach((dep, slot) => {
+      const target = allRules[dep];
+      if (!target || !target.EntityId || typeof target.Order !== 'number' || target.Order < 0) return;
+      if (DATASET_RULE_RE.test(dep)) return; // ordered against the dataset's sentences, not this entity's
+      if (!byEntity.has(target.EntityId)) byEntity.set(target.EntityId, []);
+      byEntity.get(target.EntityId).push({ slot, dep, order: target.Order });
+    });
+
+    for (const members of byEntity.values()) {
+      if (members.length < 2) continue;
+      // The group's own slots, refilled in Order: every other entry stays exactly where it is.
+      const sorted = members.slice().sort((a, b) => a.order - b.order || a.slot - b.slot);
+      members.forEach((m, i) => { deps[m.slot] = sorted[i].dep; });
+    }
+  }
+}
+
 function relabelNewRuleStatuses() {
   const allRules = {};
   for (const { rules } of EMITTED) Object.assign(allRules, rules);
@@ -1450,6 +1726,7 @@ function copyReleaseAssets() {
 // ---------------------------------------------------------------------------
 
 const FLAGS = ['specification', 'baseline', 'output'];
+const BOOLEANS = ['clean'];
 
 const USAGE = `Usage: node extract_rm.js [options]
 
@@ -1460,7 +1737,9 @@ Options:
   --baseline <folder>       Baseline release folder to diff against and copy the release
                             assets from. Default: releases/${BASELINE_DIR}.
   --output <folder>         Folder to write the generated model into. Default: the
-                            extractor's own output/ folder.
+                            extractor's own output/ folder. Must be empty or absent.
+  --clean                   Delete the output folder first, instead of refusing to write
+                            into a populated one.
   -h, --help                Show this message.
 
 Folders may be relative to the working directory. Environment: BASELINE_DIR (a folder name
@@ -1480,8 +1759,35 @@ function applyCliOptions(opts) {
   }
 }
 
+/**
+ * Refuse to extract into a populated output folder, unless --clean was passed.
+ *
+ * Extraction writes the entities the markdown expresses and never deletes, so a file left over
+ * from an earlier run survives untouched. When the specification has since dropped that entity,
+ * or a --dataset-limited run wrote only part of the tree, the stale file is indistinguishable
+ * from a freshly derived one: `npm run diff` reports it as a generated entity the baseline
+ * lacks rather than the tombstone it is. Starting empty makes the output a function of the
+ * inputs alone.
+ */
+function requireEmptyOutput(clean) {
+  if (clean) {
+    fs.rmSync(OUTPUT_DIR, { recursive: true, force: true });
+    return;
+  }
+  if (!fs.existsSync(OUTPUT_DIR)) return;
+  const entries = fs.readdirSync(OUTPUT_DIR);
+  if (!entries.length) return;
+  const shown = entries.slice(0, 4).join(', ') + (entries.length > 4 ? `, … and ${entries.length - 4} more` : '');
+  throw new UsageError(
+    `Output folder is not empty: ${OUTPUT_DIR}\n` +
+    `It holds ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}: ${shown}\n` +
+    'Extraction never deletes, so anything already there survives this run and reads as a\n' +
+    'derived entity in the diff. Empty the folder first, or pass --clean to have the\n' +
+    'extractor remove it.');
+}
+
 function main() {
-  const opts = parseArgs(process.argv.slice(2), FLAGS);
+  const opts = parseArgs(process.argv.slice(2), FLAGS, BOOLEANS);
   if (opts.help) {
     console.log(USAGE);
     return;
@@ -1499,12 +1805,18 @@ function main() {
       `Baseline not found: ${path.join(BASELINE_ROOT, 'model_rules')}\n` +
       'Pass --baseline <folder>, or set BASELINE_DIR to a folder name under releases/.');
   }
+  requireEmptyOutput(opts.clean);
   PREVIOUS_VERSION = baselineModelVersion();
   if (!process.env.NEW_VERSION) NEW_VERSION = PREVIOUS_VERSION;
 
   CHECK_LOOKUP = loadCheckLookup();
   if (contract.Conditions.AnchorPrefixes) CONDITION_ANCHOR_RE = conditionAnchorRe(contract.Conditions.AnchorPrefixes);
-  CONDITIONS = loadConditions(specPath(SPEC_ROOT, contract.Conditions.Location), contract.Conditions.Headings);
+  const conditions = loadConditions(
+    specPath(SPEC_ROOT, contract.Conditions.Location),
+    contract.Conditions.Headings,
+    contract.Conditions.PhraseAliases);
+  CONDITIONS = conditions.anchors;
+  CONDITION_PHRASES = conditions.phrases;
   CONDITION_IDS = new Set(Object.values(CONDITIONS));
   DISPLAY_NAMES = collectDisplayNames(contract);
 
@@ -1546,7 +1858,7 @@ function main() {
   requireEntities(attrCount, 'attribute', attrDir, att.Headings.Id);
 
   // --- Conditions ---
-  // The same markdown loadConditions() reads for the anchor -> ConditionId map, expanded into
+  // The same markdown loadConditions() reads for the anchor and phrase maps, expanded into
   // rules. Conditions belong to no dataset, so they carry DatasetType "CON" with a null
   // DatasetId/DatasetName, the same shape attributes use for ATT.
   // The spec folder was renamed to operating_model_conditions/, but the output stays
@@ -1592,6 +1904,7 @@ function main() {
     // Derived from the dataset's own rules, so each column root can depend on the rule that
     // requires it. Columns are emitted after their dataset, so those IDs are already settled.
     const presenceByColumn = presenceRulesByColumn(dsRules);
+    completePresenceConditions(dsRules, presenceByColumn);
 
     const cc = contract.Columns;
     const ob = contract.Objects;
@@ -1637,6 +1950,13 @@ function main() {
   }
 
   carryRemovedEntities();
+  {
+    const allRules = {};
+    for (const { rules } of EMITTED) Object.assign(allRules, rules);
+    MENTION_DEPENDENCIES.push(...linkMentionedEntities(allRules));
+    datasetDepsLast(allRules);
+    depsFollowOrder(allRules);
+  }
   const renames = relabelNewRuleStatuses();
   finalizeEmitted();
   const assets = copyReleaseAssets();
@@ -1701,6 +2021,20 @@ function main() {
     for (const u of unknownFns) console.warn(`    ${u.fn}  <- "${u.sentence}"`);
   }
 
+  if (MENTION_DEPENDENCIES.length) {
+    const byRule = new Map();
+    for (const m of MENTION_DEPENDENCIES) {
+      if (!byRule.has(m.rule)) byRule.set(m.rule, []);
+      byRule.get(m.rule).push(m.target);
+    }
+    console.log(`\n${MENTION_DEPENDENCIES.length} dependenc(ies) added on a column or object the sentence names:`);
+    for (const [rule, targets] of byRule) console.log(`    ${rule}  -> ${targets.join(', ')}`);
+  }
+
+  if (UNKNOWN_ALIASES.length) {
+    console.warn(`\n⚠ ${UNKNOWN_ALIASES.length} condition phrase alias(es) name a condition not defined in ${contract.Conditions.Location}`);
+    for (const a of UNKNOWN_ALIASES) console.warn(`    ${a.conditionId}  "${a.phrase}"`);
+  }
   if (UNKNOWN_CONDITIONS.length) {
     console.warn(`\n⚠ ${UNKNOWN_CONDITIONS.length} condition id(s) on emitted rules are not defined in ${contract.Conditions.Location}`);
     for (const u of UNKNOWN_CONDITIONS) console.warn(`    ${u.conditionId}  [${u.entity}]  "${u.text}"`);
@@ -1721,4 +2055,4 @@ function main() {
 
 if (require.main === module) runMain(main, USAGE);
 
-module.exports = { isDeprecatedEntity, deprecateColumnRules, statusLetterFor, columnsCompositeId, pascalToDisplay, deepMerge, normalizeLookup, hasSection, getSectionText, conditionAnchorsOf, functionForSentence };
+module.exports = { isDeprecatedEntity, completePresenceConditions, deprecateColumnRules, statusLetterFor, columnsCompositeId, pascalToDisplay, deepMerge, normalizeLookup, hasSection, getSectionText, conditionAnchorsOf, conditionPhrasesOf, linkPresenceRule, linkMentionedEntities, datasetDepsLast, depsFollowOrder, functionForSentence };
