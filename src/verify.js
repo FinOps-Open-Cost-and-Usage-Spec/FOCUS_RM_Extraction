@@ -24,7 +24,7 @@ const fs = require('fs');
 const path = require('path');
 const { marked } = require('marked');
 const { renderInline, datasetJsonName, renameConditions } = require('./markdown_util');
-const { DEFAULT_SPEC_ROOT, UsageError, parseArgs, specPath, runMain } = require('./cli');
+const { DEFAULT_SPEC_ROOT, UsageError, parseArgs, specPath, runMain, modelRulesName, defaultDatasetFolder } = require('./cli');
 
 const RELEASES_DIR = path.join(__dirname, '..', 'releases');
 const CONTRACT_PATH = path.join(__dirname, 'requirements_model_contract.json');
@@ -32,7 +32,9 @@ const CONTRACT_PATH = path.join(__dirname, 'requirements_model_contract.json');
 // Must resolve the same baseline as extract_rm.js, or the audit re-derives its
 // expectations from a different release than the output was generated against.
 const BASELINE_DIR = process.env.BASELINE_DIR || 'latest';
-const DATASET_FOLDER = process.env.DATASET_FOLDER || 'billing_period';
+// Resolved in runVerify() when unset, once SPEC_ROOT is known.
+let DATASET_FOLDER = process.env.DATASET_FOLDER || '';
+let MODEL_RULES = 'model_rules';
 
 // The three inputs, defaulted to match extract_rm.js and re-pointed by runVerify().
 let SPEC_ROOT = DEFAULT_SPEC_ROOT;
@@ -203,7 +205,7 @@ function structuralChecks(check, warn) {
  *                   for a rule introduced in the unpublished NEW_VERSION. Anything else is a defect.
  */
 function droppedActiveAudit(check, warn, silent) {
-  const baselineRoot = path.join(BASELINE_ROOT, 'model_rules');
+  const baselineRoot = path.join(BASELINE_ROOT, MODEL_RULES);
 
   let absent = 0, tombstoned = 0, activeTotal = 0;
   // Entity kinds with no generated counterpart at all, tallied per kind (the folder the entity
@@ -362,7 +364,7 @@ function reportMissingConditions(offenders, { ruleFile, baselineRules, baselineF
  * carries no Condition: the clause names columns and literals, so a Condition is expected.
  */
 function newRuleCurationAudit(check, warn, silent = false) {
-  const baselineRoot = path.join(BASELINE_ROOT, 'model_rules');
+  const baselineRoot = path.join(BASELINE_ROOT, MODEL_RULES);
   const baselineRules = {};          // id -> baseline rule, for diagnosing a Condition that did not carry
   const baselineFiles = new Set();   // model_rules-relative paths, to tell a new entity from a new rule
   if (fs.existsSync(baselineRoot)) {
@@ -426,7 +428,7 @@ function datasetAudit(check) {
   const reqHeading = contract.Datasets.Headings.Requirements;
   const out = JSON.parse(fs.readFileSync(path.join(OUTPUT_ROOT, 'datasets', DATASET_FOLDER, datasetJsonName(DATASET_FOLDER)), 'utf8'));
 
-  const baselineDir = path.join(BASELINE_ROOT, 'model_rules', 'datasets', DATASET_FOLDER);
+  const baselineDir = path.join(BASELINE_ROOT, MODEL_RULES, 'datasets', DATASET_FOLDER);
   const baseline = {};
   if (fs.existsSync(baselineDir)) for (const f of fs.readdirSync(baselineDir)) if (f.endsWith('.json')) Object.assign(baseline, JSON.parse(fs.readFileSync(path.join(baselineDir, f), 'utf8')));
 
@@ -523,7 +525,9 @@ working directory. Environment: BASELINE_DIR, NEW_VERSION, DATASET_FOLDER.`;
 function runVerify({ silent = false, specification, baseline, output } = {}) {
   if (specification) SPEC_ROOT = path.resolve(specification);
   if (baseline) BASELINE_ROOT = path.resolve(baseline);
-  if (output) OUTPUT_ROOT = path.join(path.resolve(output), 'model_rules');
+  MODEL_RULES = modelRulesName(BASELINE_ROOT);
+  if (output) OUTPUT_ROOT = path.join(path.resolve(output), MODEL_RULES);
+  if (!DATASET_FOLDER) DATASET_FOLDER = defaultDatasetFolder(specPath(SPEC_ROOT, JSON.parse(fs.readFileSync(CONTRACT_PATH, 'utf8')).Datasets.Location));
   NEW_VERSION = process.env.NEW_VERSION || baselineModelVersion();
 
   if (!fs.existsSync(OUTPUT_ROOT)) {

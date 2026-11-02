@@ -10,7 +10,7 @@
  * heading is expanded into a rule family (a root composite, sub-composites, and a
  * rule per leaf bullet).
  *
- * Entity scope: DataModel (data_model.md), Attributes (attributes/*.md), Conditions
+ * Entity scope: DataModel (datamodel.md), Attributes (attributes/*.md), Conditions
  * (operating_model_conditions/*.md), Datasets (<dataset>/dataset.md), Columns
  * (<dataset>/columns/*.md), and the Objects nested inside a JSON-object column's markdown. Each entity is written
  * to its own file, mirroring the releases/<v>/model_rules/ tree, under ./output/model_rules/.
@@ -42,7 +42,7 @@ const fs = require('fs');
 const path = require('path');
 const { marked } = require('marked');
 const { renderInline, normalizeHeading, datasetJsonName, resolveDatasetFolders, renameConditions } = require('./markdown_util');
-const { DEFAULT_SPEC_ROOT, UsageError, parseArgs, specPath, runMain } = require('./cli');
+const { DEFAULT_SPEC_ROOT, UsageError, parseArgs, specPath, runMain, modelRulesName } = require('./cli');
 
 // Root of the specification markdown. --specification points it anywhere; resolved in main().
 let SPEC_ROOT = DEFAULT_SPEC_ROOT;
@@ -53,11 +53,13 @@ const CHECK_LOOKUP_PATH = path.join(__dirname, 'check_function_lookup.json');
 // <folder>` moves the whole tree, model_rules/ and the copied release assets alike. Resolved in
 // main() so that merely requiring this module (the tests do) never reads argv.
 let OUTPUT_DIR = path.join(__dirname, 'output');
-let OUTPUT_ROOT = path.join(OUTPUT_DIR, 'model_rules');
+// Rule tree name, taken from the baseline in applyCliOptions() so the output mirrors it.
+let MODEL_RULES = 'model_rules';
+let OUTPUT_ROOT = path.join(OUTPUT_DIR, MODEL_RULES);
 // Per-release model inputs that no markdown expresses: the check-function catalog, the condition
 // and dataset registries, the model schema, and the JSON Schemas referenced by rules. They are
 // copied from the baseline release so the output folder builds as a complete model.
-const RELEASE_ASSETS = ['model_details.json', 'check_functions.json', 'conditions.json', 'applicability_criteria.json', 'model_datasets.json', 'model_schema.json', 'json_schemas'];
+const RELEASE_ASSETS = ['model_details.json', 'check_functions.json', 'conditions.json', 'applicability_criteria.json', 'model_datasets.json', 'model_schema.json', 'json_schemas', 'json-schemas'];
 
 // The baseline is always the `latest` release directory: extraction compares the current
 // branch's markdown against the most recently published model, so corrections made there are
@@ -745,7 +747,7 @@ function makeRule(node, order, childKeys, ctx, modelVersionIntroduced, status, p
 
 /** Merge all rule JSON files directly inside a baseline model_rules subdirectory. */
 function loadBaselineDir(...relParts) {
-  const dir = path.join(BASELINE_ROOT, 'model_rules', ...relParts);
+  const dir = path.join(BASELINE_ROOT, MODEL_RULES, ...relParts);
   if (!fs.existsSync(dir)) return null;
   const rules = {};
   for (const f of fs.readdirSync(dir)) {
@@ -776,7 +778,7 @@ function normalizeLookup(lookup) {
 
 /** Load a single baseline rule JSON file. */
 function loadBaselineFile(...relParts) {
-  const file = path.join(BASELINE_ROOT, 'model_rules', ...relParts);
+  const file = path.join(BASELINE_ROOT, MODEL_RULES, ...relParts);
   if (!fs.existsSync(file)) return null;
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
@@ -787,7 +789,7 @@ function loadBaselineFile(...relParts) {
  * requirements_model/ for display.
  */
 function baselineFileFor(outPath) {
-  return path.join(BASELINE_LABEL, 'model_rules', path.relative(OUTPUT_ROOT, outPath));
+  return path.join(BASELINE_LABEL, MODEL_RULES, path.relative(OUTPUT_ROOT, outPath));
 }
 
 /** ModelVersion recorded in the baseline's model_details.json; falls back to the directory name. */
@@ -1653,7 +1655,7 @@ function finalizeEmitted() {
  * them, and anything still live is marked Removed in NEW_VERSION.
  */
 function carryRemovedEntities() {
-  const baselineRoot = path.join(BASELINE_ROOT, 'model_rules');
+  const baselineRoot = path.join(BASELINE_ROOT, MODEL_RULES);
   if (!fs.existsSync(baselineRoot)) return;
   const emittedPaths = new Set(EMITTED.map((e) => path.resolve(e.outPath)));
 
@@ -1755,8 +1757,9 @@ function applyCliOptions(opts) {
   }
   if (opts.output) {
     OUTPUT_DIR = path.resolve(opts.output);
-    OUTPUT_ROOT = path.join(OUTPUT_DIR, 'model_rules');
   }
+  MODEL_RULES = modelRulesName(BASELINE_ROOT);
+  OUTPUT_ROOT = path.join(OUTPUT_DIR, MODEL_RULES);
 }
 
 /**
@@ -1800,9 +1803,9 @@ function main() {
   if (!fs.existsSync(SPEC_ROOT)) {
     throw new UsageError(`Specification not found: ${SPEC_ROOT}\nPass --specification <folder>.`);
   }
-  if (!fs.existsSync(path.join(BASELINE_ROOT, 'model_rules'))) {
+  if (!fs.existsSync(path.join(BASELINE_ROOT, MODEL_RULES))) {
     throw new UsageError(
-      `Baseline not found: ${path.join(BASELINE_ROOT, 'model_rules')}\n` +
+      `Baseline not found: ${path.join(BASELINE_ROOT, MODEL_RULES)}\n` +
       'Pass --baseline <folder>, or set BASELINE_DIR to a folder name under releases/.');
   }
   requireEmptyOutput(opts.clean);

@@ -88,4 +88,17 @@ function runMain(main, usage) {
   }
 }
 
-module.exports = { DEFAULT_SPEC_ROOT, UsageError, parseArgs, specPath, runMain };
+/**
+ * Name of the rule tree inside a release. FOCUS 1.5 renamed model_rules/ to model-rules/ along
+ * with the rest of the spec; whichever the release folder holds wins, so older releases still work.
+ */
+function modelRulesName(releaseRoot) {
+  return ['model-rules', 'model_rules'].find((n) => fs.existsSync(path.join(releaseRoot, n))) || 'model_rules';
+}
+
+/** Default dataset for the deep audit: billingperiod after the rename, billing_period before. */
+function defaultDatasetFolder(datasetsRoot) {
+  return ['billingperiod', 'billing_period'].find((n) => fs.existsSync(path.join(datasetsRoot, n))) || 'billing_period';
+}
+
+module.exports = { DEFAULT_SPEC_ROOT, UsageError, parseArgs, specPath, runMain, modelRulesName, defaultDatasetFolder };

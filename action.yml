@@ -38,7 +38,7 @@ inputs:
   dataset-folder:
     description: "Dataset targeted by the verifier's deep transformation audit."
     required: false
-    default: 'billing_period'
+    default: ''
   strict:
     description: 'Fail the job when the diff finds a content gap. Key order and whitespace never fail.'
     required: false

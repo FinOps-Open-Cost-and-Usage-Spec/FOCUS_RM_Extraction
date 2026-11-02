@@ -28,14 +28,14 @@
 const fs = require('fs');
 const path = require('path');
 
-const { UsageError, parseArgs, runMain } = require('./cli');
+const { UsageError, parseArgs, runMain, modelRulesName } = require('./cli');
 
 const RELEASES_DIR = path.join(__dirname, '..', 'releases');
 const BASELINE_DIR = process.env.BASELINE_DIR || 'latest';
 
 // The subfolder both trees share. Entities are walked relative to it, but reported with it
 // prefixed back on, so a printed path can be pasted onto either folder root as-is.
-const MODEL_DIR = 'model_rules';
+let MODEL_DIR = 'model_rules';
 const entityPath = (rel) => path.join(MODEL_DIR, rel);
 
 // The two trees compared, defaulted to match extract_rm.js and re-pointed in main().
@@ -330,6 +330,7 @@ function main() {
   SUMMARY_ONLY = Boolean(opts.summary);
   STRICT = Boolean(opts.strict);
   if (opts.baseline) {
+    MODEL_DIR = modelRulesName(path.resolve(opts.baseline));
     BASELINE_ROOT = path.join(path.resolve(opts.baseline), MODEL_DIR);
     BASELINE_LABEL = opts.baseline;
   }

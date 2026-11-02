@@ -250,7 +250,7 @@ heading names are never hard-coded.
 
 Entities are processed in an order that respects dependencies:
 
-1. **DataModel** — `specification/datasets/data_model.md` (single entity).
+1. **DataModel** — `specification/datasets/datamodel.md` (`data_model.md` before FOCUS 1.5; single entity).
 2. **Attributes** — every `*.md` in `specification/attributes/` that has both an
    ID heading and a Requirements heading (overview files without those are
    skipped). Attributes are processed *before* datasets and columns because a

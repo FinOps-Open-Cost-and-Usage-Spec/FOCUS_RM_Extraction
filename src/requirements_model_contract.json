@@ -6,7 +6,7 @@
     "InvoiceDetail": "IND"
   },
   "DataModel": {
-    "Location": "specification/datasets/data_model.md",
+    "Location": ["specification/datasets/datamodel.md", "specification/datasets/data_model.md"],
     "EntityType": "DataModel",
     "ArtifactType": "M",
     "IdPrefix": "DMO",
@@ -62,7 +62,7 @@
     }
   },
   "Conditions": {
-    "Location": ["specification/operating_model_conditions/", "specification/conditions/"],
+    "Location": ["specification/operating-model-conditions/", "specification/operating_model_conditions/", "specification/conditions/"],
     "EntityType": "Condition",
     "ArtifactType": "N",
     "IdPrefix": "CON",

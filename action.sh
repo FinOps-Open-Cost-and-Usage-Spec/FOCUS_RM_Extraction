@@ -21,9 +21,10 @@ SUMMARY="${INPUT_SUMMARY:-false}"
 # Extractor knobs that have no flag, only an environment variable.
 export NEW_VERSION="${INPUT_NEW_VERSION:-}"
 export DATASET_FOLDERS="${INPUT_DATASET_FOLDERS:-}"
-export DATASET_FOLDER="${INPUT_DATASET_FOLDER:-billing_period}"
+export DATASET_FOLDER="${INPUT_DATASET_FOLDER:-}"
 if [ -z "$NEW_VERSION" ]; then unset NEW_VERSION; fi
 if [ -z "$DATASET_FOLDERS" ]; then unset DATASET_FOLDERS; fi
+if [ -z "$DATASET_FOLDER" ]; then unset DATASET_FOLDER; fi
 
 # GITHUB_OUTPUT is absent outside Actions, which is how the script stays runnable locally.
 # Nothing is written to GITHUB_STEP_SUMMARY: the outputs carry the verdicts, and how they are

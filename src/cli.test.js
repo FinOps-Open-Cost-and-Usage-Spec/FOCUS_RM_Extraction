@@ -68,3 +68,18 @@ test('alternates with nothing on disk fall back to the first, so the error names
   assert.equal(specPath('/spec', ['specification/operating_model_conditions/', 'specification/conditions/']),
     path.join('/spec', 'operating_model_conditions') + path.sep);
 });
+
+test('the DataModel Location finds datamodel.md and falls back to data_model.md', () => {
+  // FOCUS 1.5 names the file for its entity with no separator (datamodel.md); older releases use data_model.md.
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const contract = require('./requirements_model_contract.json');
+  const loc = contract.DataModel.Location;
+  for (const name of ['datamodel.md', 'data_model.md']) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rm-dm-'));
+    fs.mkdirSync(path.join(root, 'datasets'));
+    fs.writeFileSync(path.join(root, 'datasets', name), '');
+    assert.equal(specPath(root, loc), path.join(root, 'datasets', name));
+    fs.rmSync(root, { recursive: true });
+  }
+});
