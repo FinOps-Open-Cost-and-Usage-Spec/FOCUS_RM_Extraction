@@ -119,5 +119,88 @@
         "ColumnName": "{entity}"
       }
     }
+  },
+  "{entity} MUST equal BilledCost when ChargeCategory is \"Credit\".": {
+    "Function": "Validation",
+    "ValidationCriteria": {
+      "Condition": {
+        "CheckFunction": "CheckValue",
+        "ColumnName": "ChargeCategory",
+        "Value": "Credit"
+      },
+      "Requirement": {
+        "CheckFunction": "CheckSameValue",
+        "ColumnAName": "{entity}",
+        "ColumnBName": "BilledCost"
+      }
+    }
+  },
+  "{entity} MUST have one and only one parent SkuId for a given ServiceProviderName.": {
+    "Function": "Validation",
+    "ValidationCriteria": {
+      "Requirement": {
+        "CheckFunction": "CheckDistinctCount",
+        "ColumnAName": "{entity}",
+        "ColumnBName": "SkuId",
+        "ExpectedCount": 1
+      }
+    }
+  },
+  "{entity} MUST have one and only one PricingUnit for a given ServiceProviderName.": {
+    "Function": "Validation",
+    "ValidationCriteria": {
+      "Requirement": {
+        "CheckFunction": "CheckDistinctCount",
+        "ColumnAName": "{entity}",
+        "ColumnBName": "PricingUnit",
+        "ExpectedCount": 1
+      }
+    }
+  },
+  "Property value MUST be one of the allowed values specified for that property when allowed values are specified.": {
+    "Function": "Validation",
+    "ValidationCriteria": {
+      "Requirement": {
+        "CheckFunction": "AND",
+        "Items": [
+          {
+            "CheckFunction": "OR",
+            "Items": [
+              { "CheckFunction": "JSONCheckPathValue", "ColumnName": "{entity}", "Path": "$.TokenDirection", "Value": null },
+              { "CheckFunction": "JSONCheckPathValue", "ColumnName": "{entity}", "Path": "$.TokenDirection", "Value": "Input" },
+              { "CheckFunction": "JSONCheckPathValue", "ColumnName": "{entity}", "Path": "$.TokenDirection", "Value": "Output" }
+            ]
+          },
+          {
+            "CheckFunction": "OR",
+            "Items": [
+              { "CheckFunction": "JSONCheckPathValue", "ColumnName": "{entity}", "Path": "$.TokenCacheAction", "Value": null },
+              { "CheckFunction": "JSONCheckPathValue", "ColumnName": "{entity}", "Path": "$.TokenCacheAction", "Value": "Read" },
+              { "CheckFunction": "JSONCheckPathValue", "ColumnName": "{entity}", "Path": "$.TokenCacheAction", "Value": "Write" },
+              { "CheckFunction": "JSONCheckPathValue", "ColumnName": "{entity}", "Path": "$.TokenCacheAction", "Value": "Uncached" },
+              { "CheckFunction": "JSONCheckPathValue", "ColumnName": "{entity}", "Path": "$.TokenCacheAction", "Value": "Other" }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "{entity} MUST NOT be associated with both a \"Usage\" ChargeCategory and a \"Purchase\" ChargeCategory for a given ServiceProviderName.": {
+    "Function": "Validation",
+    "ValidationCriteria": {
+      "Condition": {
+        "CheckFunction": "OR",
+        "Items": [
+          { "CheckFunction": "CheckValue", "ColumnName": "ChargeCategory", "Value": "Usage" },
+          { "CheckFunction": "CheckValue", "ColumnName": "ChargeCategory", "Value": "Purchase" }
+        ]
+      },
+      "Requirement": {
+        "CheckFunction": "CheckDistinctCount",
+        "ColumnAName": "{entity}",
+        "ColumnBName": "ChargeCategory",
+        "ExpectedCount": 1
+      }
+    }
   }
 }
